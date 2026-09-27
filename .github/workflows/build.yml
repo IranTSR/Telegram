@@ -52,6 +52,27 @@ jobs:
           echo "${{ secrets.KEYSTORE_BASE64 }}" | base64 -d > TMessagesProj/config/release.keystore
           ls -la TMessagesProj/config/release.keystore
 
+      - name: Build Xray core for 32-bit ABIs (arm32/x86)
+        run: |
+          # Upstream Xray-core no longer ships android binaries for armeabi-v7a/x86;
+          # build them from the same source tag with Go (GOOS=android, pure Go, no NDK needed).
+          sudo apt-get install -y golang-go 2>/dev/null || true
+          if ! command -v go >/dev/null; then
+            GO_TGZ=/tmp/go.tgz
+            curl -sSL -o "$GO_TGZ" https://go.dev/dl/go1.24.7.linux-amd64.tar.gz
+            sudo tar -xzf "$GO_TGZ" -C /usr/local
+            echo "/usr/local/go/bin" >> $GITHUB_PATH
+            export PATH=/usr/local/go/bin:$PATH
+          fi
+          go version
+          git clone --depth 1 --branch v26.3.27 https://github.com/XTLS/Xray-core.git /tmp/xray-src
+          mkdir -p "$GITHUB_WORKSPACE/xray-prebuilt/armeabi-v7a" "$GITHUB_WORKSPACE/xray-prebuilt/x86"
+          cd /tmp/xray-src
+          GOOS=android GOARCH=arm GOARM=7 CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o "$GITHUB_WORKSPACE/xray-prebuilt/armeabi-v7a/libxray.so" ./main
+          GOOS=android GOARCH=386 CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o "$GITHUB_WORKSPACE/xray-prebuilt/x86/libxray.so" ./main
+          file "$GITHUB_WORKSPACE/xray-prebuilt/armeabi-v7a/libxray.so" "$GITHUB_WORKSPACE/xray-prebuilt/x86/libxray.so"
+          echo "XRAY_PREBUILT_DIR=$GITHUB_WORKSPACE/xray-prebuilt" >> $GITHUB_ENV
+
       - name: Build standalone APKs (universal + per-ABI)
         run: |
           ./gradlew :TMessagesProj_AppStandalone:assembleAfatStandalone \
