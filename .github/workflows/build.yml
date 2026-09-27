@@ -55,7 +55,7 @@ jobs:
       - name: Build Xray core for 32-bit ABIs (arm32/x86)
         run: |
           # Upstream Xray-core no longer ships android binaries for armeabi-v7a/x86;
-          # build them from the same source tag with Go (GOOS=android, pure Go, no NDK needed).
+          # build them from the same source tag with Go (GOOS=android, NDK clang for cgo linking).
           sudo apt-get install -y golang-go 2>/dev/null || true
           if ! command -v go >/dev/null; then
             GO_TGZ=/tmp/go.tgz
@@ -67,9 +67,10 @@ jobs:
           go version
           git clone --depth 1 --branch v26.3.27 https://github.com/XTLS/Xray-core.git /tmp/xray-src
           mkdir -p "$GITHUB_WORKSPACE/xray-prebuilt/armeabi-v7a" "$GITHUB_WORKSPACE/xray-prebuilt/x86"
+          LLVM_BIN="$ANDROID_NDK_HOME/toolchains/llvm/prebuilt/linux-x86_64/bin"
           cd /tmp/xray-src
-          GOOS=android GOARCH=arm GOARM=7 CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o "$GITHUB_WORKSPACE/xray-prebuilt/armeabi-v7a/libxray.so" ./main
-          GOOS=android GOARCH=386 CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o "$GITHUB_WORKSPACE/xray-prebuilt/x86/libxray.so" ./main
+          CC="$LLVM_BIN/armv7a-linux-androideabi21-clang" CGO_ENABLED=1 GOOS=android GOARCH=arm GOARM=7 go build -trimpath -ldflags="-s -w" -o "$GITHUB_WORKSPACE/xray-prebuilt/armeabi-v7a/libxray.so" ./main
+          CC="$LLVM_BIN/i686-linux-android21-clang" CGO_ENABLED=1 GOOS=android GOARCH=386 go build -trimpath -ldflags="-s -w" -o "$GITHUB_WORKSPACE/xray-prebuilt/x86/libxray.so" ./main
           file "$GITHUB_WORKSPACE/xray-prebuilt/armeabi-v7a/libxray.so" "$GITHUB_WORKSPACE/xray-prebuilt/x86/libxray.so"
           echo "XRAY_PREBUILT_DIR=$GITHUB_WORKSPACE/xray-prebuilt" >> $GITHUB_ENV
 
