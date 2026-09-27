@@ -418,7 +418,7 @@ public class SharedConfig {
             normalizeVlessFields();
         }
 
-        private void normalizeVlessFields() {
+        public void normalizeVlessFields() {
             if (this.vlessId == null) {
                 this.vlessId = "";
             }

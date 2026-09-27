@@ -2725,6 +2725,8 @@
     <string name="XrayProxyDownloadingPercent">Downloading Xray core... %1$d%%</string>
     <string name="XrayProxyFailed">Xray proxy failed to start</string>
     <string name="XrayProxyRedownload">Redownload Xray core</string>
+    <string name="DeleteAllServer">Delete all servers</string>
+    <string name="BrokenLink">Unknown / Broken Link</string>
     <string name="XrayProxyRedownloaded">Xray core will be downloaded again</string>
     <string name="XrayProxyRedownloadFailed">Failed to remove Xray core</string>
     <string name="XrayProxyCoreStatus">Xray core</string>

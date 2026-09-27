@@ -1104,7 +1104,7 @@ public class ProxyListActivity extends BaseFragment implements NotificationCente
     }
 
     private void notifyProxyRangesChanged() {
-        if (listAdapter == null || !isAdded()) {
+        if (listAdapter == null) {
             return;
         }
         if (subscriptionStartRow != -1) {
