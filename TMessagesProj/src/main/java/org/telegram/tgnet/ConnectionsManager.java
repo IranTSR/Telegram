@@ -58,8 +58,10 @@ import java.io.InputStream;
 import java.net.Inet4Address;
 import java.net.Inet6Address;
 import java.net.InetAddress;
+import java.net.InetSocketAddress;
 import java.net.InterfaceAddress;
 import java.net.NetworkInterface;
+import java.net.Socket;
 import java.net.SocketTimeoutException;
 import java.net.URL;
 import java.net.URLConnection;
@@ -753,8 +755,40 @@ public class ConnectionsManager extends BaseController {
             WebProxyConnectionTester.getInstance().checkProxy(settings, requestTimeDelegate, this::checkWebProxyInternal);
             return 0;
         }
+        if (settings.getType() == ProxySettings.Type.XRAY_VLESS) {
+            return checkXrayProxy(settings, requestTimeDelegate);
+        }
 
         return native_checkProxy(currentAccount, settings.getAddress(), settings.getPort(), settings.getUser(), settings.getPassword(), settings.getSecret(), requestTimeDelegate);
+    }
+
+    private long checkXrayProxy(ProxySettings settings, RequestTimeDelegate requestTimeDelegate) {
+        SharedConfig.ProxyInfo current = SharedConfig.currentProxy;
+        boolean isActive = current != null && current.settings == settings
+                && SharedConfig.isProxyEnabled() && XrayProxyManager.isRunning() && XrayProxyManager.isSocksReady();
+        if (isActive) {
+            return native_checkProxy(currentAccount, XrayProxyManager.LOCAL_ADDRESS, XrayProxyManager.getLocalSocksPort(), "", "", "", requestTimeDelegate);
+        }
+        final String address = settings.getAddress();
+        final int port = settings.getPort();
+        final long start = SystemClock.elapsedRealtime();
+        Utilities.globalQueue.postRunnable(() -> {
+            long time = -1;
+            Socket socket = new Socket();
+            try {
+                socket.connect(new InetSocketAddress(address, port), 5000);
+                time = SystemClock.elapsedRealtime() - start;
+            } catch (Exception ignored) {
+            } finally {
+                try {
+                    socket.close();
+                } catch (Exception ignored) {
+                }
+            }
+            final long result = time;
+            AndroidUtilities.runOnUIThread(() -> requestTimeDelegate.run(result));
+        });
+        return 0;
     }
 
     private void checkWebProxyInternal(ProxySettings settings, int port, RequestTimeDelegate requestTimeDelegate) {
