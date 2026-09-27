@@ -112,6 +112,7 @@ import org.telegram.messenger.NotificationCenter;
 import org.telegram.messenger.NotificationsController;
 import org.telegram.messenger.R;
 import org.telegram.messenger.SharedConfig;
+import org.telegram.messenger.XrayProxyManager;
 import org.telegram.messenger.StatsController;
 import org.telegram.messenger.UserConfig;
 import org.telegram.messenger.UserObject;
@@ -3450,6 +3451,15 @@ public class VoIPService extends Service implements SensorEventListener, AudioMa
 			}
 
 			// encryption key
+			// xray: route calls through the local XRay SOCKS proxy when enabled for calls
+			Instance.Proxy proxy = null;
+			if (preferences.getBoolean("proxy_enabled", false) && preferences.getBoolean("proxy_enabled_calls", false)) {
+				SharedConfig.ProxyInfo currentProxy = SharedConfig.currentProxy;
+				if (currentProxy != null && currentProxy.isXrayVless() && XrayProxyManager.isRunning() && XrayProxyManager.isSocksReady()) {
+					proxy = new Instance.Proxy(XrayProxyManager.LOCAL_ADDRESS, XrayProxyManager.getLocalSocksPort(), null, null);
+				}
+			}
+
 			final Instance.EncryptionKey encryptionKey = new Instance.EncryptionKey(authKey, isOutgoing);
 
 			boolean newAvailable = "2.7.7".compareTo(privateCall.protocol.library_versions.get(0)) <= 0;
@@ -3467,7 +3477,7 @@ public class VoIPService extends Service implements SensorEventListener, AudioMa
 				}
 			}
 			// init
-			tgVoip[CAPTURE_DEVICE_CAMERA] = Instance.makeInstance(privateCall.protocol.library_versions.get(0), config, persistentStateFilePath, endpoints, null, getNetworkType(), encryptionKey, remoteSink[CAPTURE_DEVICE_CAMERA], captureDevice[CAPTURE_DEVICE_CAMERA], (uids, levels, voice) -> {
+			tgVoip[CAPTURE_DEVICE_CAMERA] = Instance.makeInstance(privateCall.protocol.library_versions.get(0), config, persistentStateFilePath, endpoints, proxy, getNetworkType(), encryptionKey, remoteSink[CAPTURE_DEVICE_CAMERA], captureDevice[CAPTURE_DEVICE_CAMERA], (uids, levels, voice) -> {
 				if (sharedInstance == null || privateCall == null) {
 					return;
 				}
