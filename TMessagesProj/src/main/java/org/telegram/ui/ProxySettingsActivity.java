@@ -965,10 +965,10 @@ public class ProxySettingsActivity extends BaseFragment {
 
     private String buildVlessLinkFromFields() {
         SharedConfig.ProxyInfo info = new SharedConfig.ProxyInfo(
-                new ProxySettings.Builder()
-                        .type(ProxySettings.Type.XRAY_VLESS)
-                        .address(inputFields[FIELD_IP].getText().toString())
-                        .port(Utilities.parseInt(inputFields[FIELD_PORT].getText().toString()))
+                ProxySettings.builder()
+                        .setType(ProxySettings.Type.XRAY_VLESS)
+                        .setAddress(inputFields[FIELD_IP].getText().toString())
+                        .setPort(Utilities.parseInt(inputFields[FIELD_PORT].getText().toString()))
                         .build()
         );
         info.vlessId = inputFields[FIELD_VLESS_ID].getText().toString();

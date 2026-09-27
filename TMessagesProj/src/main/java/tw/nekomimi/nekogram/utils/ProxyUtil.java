@@ -484,10 +484,10 @@ public class ProxyUtil {
             return null;
         }
         SharedConfig.ProxyInfo info = new SharedConfig.ProxyInfo(
-                new ProxySettings.Builder()
-                        .type(ProxySettings.Type.XRAY_VLESS)
-                        .address(address)
-                        .port(port)
+                ProxySettings.builder()
+                        .setType(ProxySettings.Type.XRAY_VLESS)
+                        .setAddress(address)
+                        .setPort(port)
                         .build()
         );
         info.vlessId = user.optString("id", "");
