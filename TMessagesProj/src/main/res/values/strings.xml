@@ -2734,6 +2734,9 @@
     <string name="XrayProxyStatusDownloadingPercent">Downloading... %1$d%%</string>
     <string name="XrayProxyStatusReady">Ready</string>
     <string name="XrayProxyStatusFailed">Failed</string>
+    <string name="ImportProxyFromClipboard">Import From Clipboard</string>
+    <string name="ImportProxyFromUrl">Import from URL</string>
+    <string name="ProxySubscriptionUrl">Subscription URL</string>
     <string name="ConnectingToProxyEnable">Enable</string>
     <string name="LowDiskSpaceTitle">Attention</string>
     <string name="LowDiskSpaceMessage">Your device is almost out of disk space. To free some space, you can set up Telegram to cache only recent media.</string>

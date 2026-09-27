@@ -24,6 +24,7 @@ import android.graphics.PorterDuffColorFilter;
 import android.graphics.drawable.Drawable;
 import android.os.SystemClock;
 import android.text.TextUtils;
+import android.widget.LinearLayout;
 import android.util.TypedValue;
 import android.view.Gravity;
 import android.view.View;
@@ -50,6 +51,8 @@ import org.telegram.messenger.SharedConfig;
 import org.telegram.utils.proxy.ProxySettings;
 import org.telegram.tgnet.ConnectionsManager;
 import org.telegram.ui.ActionBar.ActionBar;
+import tw.nekomimi.nekogram.utils.ProxyUtil;
+import org.telegram.ui.ActionBar.ActionBarMenu;
 import org.telegram.ui.ActionBar.ActionBarMenu;
 import org.telegram.ui.ActionBar.ActionBarMenuItem;
 import org.telegram.ui.ActionBar.AlertDialog;
@@ -65,6 +68,7 @@ import org.telegram.ui.Cells.TextSettingsCell;
 import org.telegram.ui.Components.CheckBox2;
 import org.telegram.ui.Components.CubicBezierInterpolator;
 import org.telegram.ui.Components.LayoutHelper;
+import org.telegram.ui.Components.EditTextBoldCursor;
 import org.telegram.ui.Components.NumberTextView;
 import org.telegram.ui.Components.RecyclerListView;
 import org.telegram.ui.Components.SlideChooseView;
@@ -106,6 +110,8 @@ public class ProxyListActivity extends BaseFragment implements NotificationCente
     private NumberTextView selectedCountTextView;
     private ActionBarMenuItem shareMenuItem;
     private ActionBarMenuItem deleteMenuItem;
+    private final static int menu_import_clipboard = 1001;
+    private final static int menu_import_url = 1002;
 
     private List<SharedConfig.ProxyInfo> selectedItems = new ArrayList<>();
     private List<SharedConfig.ProxyInfo> proxyList = new ArrayList<>();
@@ -172,9 +178,14 @@ public class ProxyListActivity extends BaseFragment implements NotificationCente
         }
 
         public void setProxy(SharedConfig.ProxyInfo proxyInfo) {
-            textView.setText(proxyInfo.settings.getType() == ProxySettings.Type.WEB
-                    ? proxyInfo.settings.getAddress() + " (WEB)"
-                    : proxyInfo.settings.getAddress() + ":" + proxyInfo.settings.getPort());
+            if (proxyInfo.isXrayVless()) {
+                String title = !TextUtils.isEmpty(proxyInfo.vlessRemark) ? proxyInfo.vlessRemark : proxyInfo.settings.getAddress() + ":" + proxyInfo.settings.getPort();
+                textView.setText(title + " (VLESS)");
+            } else {
+                textView.setText(proxyInfo.settings.getType() == ProxySettings.Type.WEB
+                        ? proxyInfo.settings.getAddress() + " (WEB)"
+                        : proxyInfo.settings.getAddress() + ":" + proxyInfo.settings.getPort());
+            }
             currentInfo = proxyInfo;
         }
 
@@ -374,6 +385,11 @@ public class ProxyListActivity extends BaseFragment implements NotificationCente
                 }
             }
         });
+
+        ActionBarMenu menu = actionBar.createMenu();
+        ActionBarMenuItem otherItem = menu.addItem(0, R.drawable.ic_ab_other);
+        otherItem.addSubItem(menu_import_clipboard, LocaleController.getString(R.string.ImportProxyFromClipboard)).setOnClickListener((v) -> ProxyUtil.importFromClipboard(getParentActivity()));
+        otherItem.addSubItem(menu_import_url, LocaleController.getString(R.string.ImportProxyFromUrl)).setOnClickListener((v) -> showImportFromUrlDialog());
 
         listAdapter = new ListAdapter(context);
 
@@ -589,6 +605,37 @@ public class ProxyListActivity extends BaseFragment implements NotificationCente
             return false;
         }
         return super.onBackPressed(invoked);
+    }
+
+    private void showImportFromUrlDialog() {
+        if (getParentActivity() == null) {
+            return;
+        }
+        LinearLayout container = new LinearLayout(getParentActivity());
+        container.setOrientation(LinearLayout.VERTICAL);
+
+        EditTextBoldCursor editText = new EditTextBoldCursor(getParentActivity());
+        editText.setSingleLine(true);
+        editText.setTextSize(TypedValue.COMPLEX_UNIT_DIP, 16);
+        editText.setTextColor(Theme.getColor(Theme.key_dialogTextBlack));
+        editText.setHintColor(Theme.getColor(Theme.key_groupcreate_hintText));
+        editText.setCursorColor(Theme.getColor(Theme.key_dialogTextBlack));
+        editText.setLineColors(Theme.getColor(Theme.key_windowBackgroundWhiteInputField), Theme.getColor(Theme.key_windowBackgroundWhiteInputFieldActivated), Theme.getColor(Theme.key_text_RedRegular));
+        editText.setHintText(LocaleController.getString(R.string.ProxySubscriptionUrl));
+        editText.setBackgroundDrawable(null);
+        container.addView(editText, LayoutHelper.createLinear(LayoutHelper.MATCH_PARENT, LayoutHelper.WRAP_CONTENT, 24, 0, 24, 10));
+
+        AlertDialog.Builder builder = new AlertDialog.Builder(getParentActivity());
+        builder.setTitle(LocaleController.getString(R.string.ImportProxyFromUrl));
+        builder.setView(container);
+        builder.setPositiveButton(LocaleController.getString(R.string.Import), (dialog, which) -> {
+            String url = editText.getText().toString().trim();
+            if (!TextUtils.isEmpty(url)) {
+                ProxyUtil.importFromUrl(getParentActivity(), url, true);
+            }
+        });
+        builder.setNegativeButton(LocaleController.getString(R.string.Cancel), null);
+        showDialog(builder.create());
     }
 
     private void updateRows(boolean notify) {
