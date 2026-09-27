@@ -129,7 +129,7 @@ if (nativeTarget != 'SKIP') {
     if (!nativeTarget.isBlank()) {
         xrayTargets = [nativeTarget]
     } else {
-        xrayTargets = ["arm64-v8a", "x86_64"]
+        xrayTargets = ["armeabi-v7a", "arm64-v8a", "x86", "x86_64"]
     }
 }
 
