@@ -2,6 +2,18 @@ name: Build Telegram XRay
 
 on:
   workflow_dispatch:
+    inputs:
+      publish_release:
+        description: "Create a GitHub Release with the 5 APKs"
+        type: boolean
+        default: true
+
+permissions:
+  contents: write
+
+env:
+  APP_VERSION_NAME: "12.10.5"
+  RELEASE_TAG: "v12.10.5-xray1"
 
 jobs:
   build:
@@ -40,22 +52,49 @@ jobs:
           echo "${{ secrets.KEYSTORE_BASE64 }}" | base64 -d > TMessagesProj/config/release.keystore
           ls -la TMessagesProj/config/release.keystore
 
-      - name: Build standalone APK (arm64-v8a, armeabi-v7a, x86_64, x86)
+      - name: Build standalone APKs (universal + per-ABI)
         run: |
           ./gradlew :TMessagesProj_AppStandalone:assembleAfatStandalone \
+                    :TMessagesProj_AppStandalone:assembleA64Standalone \
+                    :TMessagesProj_AppStandalone:assembleA32Standalone \
+                    :TMessagesProj_AppStandalone:assembleX64Standalone \
+                    :TMessagesProj_AppStandalone:assembleX86Standalone \
             -PRELEASE_STORE_PASSWORD="${{ secrets.KEYSTORE_PASS }}" \
             -PRELEASE_KEY_PASSWORD="${{ secrets.ALIAS_PASS }}" \
             -PRELEASE_KEY_ALIAS="${{ secrets.ALIAS_NAME }}" \
             --stacktrace
 
-      - name: Rename APK
+      - name: Rename APKs
         run: |
-          cd TMessagesProj_AppStandalone/build/outputs/apk/afat/standalone
-          ls -la
-          mv app.apk Telegram-XRay-12.10.5-universal.apk
+          OUT=TMessagesProj_AppStandalone/build/outputs/apk
+          mkdir -p dist
+          mv "$OUT/afat/standalone/app.apk"  "dist/Telegram-XRay-${{ env.APP_VERSION_NAME }}-universal.apk"
+          mv "$OUT/a64/standalone/app.apk"   "dist/Telegram-XRay-${{ env.APP_VERSION_NAME }}-arm64.apk"
+          mv "$OUT/a32/standalone/app.apk"   "dist/Telegram-XRay-${{ env.APP_VERSION_NAME }}-arm32.apk"
+          mv "$OUT/x64/standalone/app.apk"   "dist/Telegram-XRay-${{ env.APP_VERSION_NAME }}-x86_64.apk"
+          mv "$OUT/x86/standalone/app.apk"   "dist/Telegram-XRay-${{ env.APP_VERSION_NAME }}-x86.apk"
+          ls -la dist
 
-      - name: Upload APK
+      - name: Upload APKs
         uses: actions/upload-artifact@v4
         with:
-          name: Telegram-XRay-12.10.5
-          path: TMessagesProj_AppStandalone/build/outputs/apk/afat/standalone/Telegram-XRay-12.10.5-universal.apk
+          name: Telegram-XRay-${{ env.APP_VERSION_NAME }}
+          path: dist/*.apk
+
+      - name: Publish GitHub Release
+        if: inputs.publish_release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ env.RELEASE_TAG }}
+          name: Telegram XRay ${{ env.APP_VERSION_NAME }}
+          files: dist/*.apk
+          body: |
+            Telegram ${{ env.APP_VERSION_NAME }} with built-in XRay (VLESS) proxy support.
+            XRay core v26.3.27 bundled for all architectures.
+
+            - **universal**: all ABIs (armeabi-v7a, arm64-v8a, x86, x86_64)
+            - **arm64**: arm64-v8a (most modern phones)
+            - **arm32**: armeabi-v7a (older phones)
+            - **x86_64** / **x86**: emulators and x86 devices
+
+            Signed with a personal key — uninstall the official Telegram first if the package signature conflicts.
