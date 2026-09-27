@@ -56,14 +56,11 @@ jobs:
         run: |
           # Upstream Xray-core no longer ships android binaries for armeabi-v7a/x86;
           # build them from the same source tag with Go (GOOS=android, NDK clang for cgo linking).
-          sudo apt-get install -y golang-go 2>/dev/null || true
-          if ! command -v go >/dev/null; then
-            GO_TGZ=/tmp/go.tgz
-            curl -sSL -o "$GO_TGZ" https://go.dev/dl/go1.24.7.linux-amd64.tar.gz
-            sudo tar -xzf "$GO_TGZ" -C /usr/local
-            echo "/usr/local/go/bin" >> $GITHUB_PATH
-            export PATH=/usr/local/go/bin:$PATH
-          fi
+          # Xray v26.3.27 needs Go >= 1.26, newer than apt's golang-go, so install from go.dev.
+          curl -sSL -o /tmp/go.tgz https://go.dev/dl/go1.27.1.linux-amd64.tar.gz
+          sudo rm -rf /usr/local/go && sudo tar -xzf /tmp/go.tgz -C /usr/local
+          export PATH=/usr/local/go/bin:$PATH
+          echo "/usr/local/go/bin" >> $GITHUB_PATH
           go version
           git clone --depth 1 --branch v26.3.27 https://github.com/XTLS/Xray-core.git /tmp/xray-src
           mkdir -p "$GITHUB_WORKSPACE/xray-prebuilt/armeabi-v7a" "$GITHUB_WORKSPACE/xray-prebuilt/x86"
