@@ -112,108 +112,12 @@ dependencies {
     coreLibraryDesugaring 'com.android.tools:desugar_jdk_libs:2.1.5'
 }
 
-def nativeTarget = project.findProperty("nativeTarget")?.toString() ?: ""
-def xrayVersion = "v26.3.27"
-def xrayAssetMap = [
-    "arm64-v8a": "Xray-android-arm64-v8a.zip",
-    "armeabi-v7a": "Xray-android-arm32-v7a.zip",
-    "x86_64": "Xray-android-amd64.zip",
-    "x86": "Xray-android-386.zip",
-]
-def xrayOutputDir = file("$buildDir/xray")
-def xrayDownloadDir = new File(xrayOutputDir, "download")
-def xrayJniDir = new File(xrayOutputDir, "jniLibs")
-def xrayAssetsDir = new File(xrayOutputDir, "assets")
-def xrayTargets = []
-if (nativeTarget != 'SKIP') {
-    if (!nativeTarget.isBlank()) {
-        xrayTargets = [nativeTarget]
-    } else {
-        xrayTargets = ["armeabi-v7a", "arm64-v8a", "x86", "x86_64"]
-    }
-}
-
-def prepareXrayCore = tasks.register("prepareXrayCore") {
-    inputs.property("xrayVersion", xrayVersion)
-    inputs.property("xrayTargets", xrayTargets.join(","))
-    outputs.dir(xrayJniDir)
-    outputs.dir(xrayAssetsDir)
-    doLast {
-        if (xrayTargets.isEmpty()) {
-            return
-        }
-        xrayDownloadDir.mkdirs()
-        xrayJniDir.mkdirs()
-        def assetsDir = new File(xrayAssetsDir, "xray")
-        assetsDir.mkdirs()
-        for (String abi : xrayTargets) {
-            def assetName = xrayAssetMap[abi]
-            if (assetName == null) {
-                continue
-            }
-            def zipFile = new File(xrayDownloadDir, assetName)
-            if (!zipFile.exists() || zipFile.length() == 0) {
-                def url = new URL("https://github.com/XTLS/Xray-core/releases/download/${xrayVersion}/${assetName}")
-                url.withInputStream { input ->
-                    zipFile.withOutputStream { output ->
-                        output << input
-                    }
-                }
-            }
-            def abiDir = new File(xrayJniDir, abi)
-            abiDir.mkdirs()
-            def libOut = new File(abiDir, "libxray.so")
-            def geoipOut = new File(assetsDir, "geoip.dat")
-            def geositeOut = new File(assetsDir, "geosite.dat")
-            boolean needLib = !libOut.exists() || libOut.length() == 0
-            boolean needGeo = !geoipOut.exists() || geoipOut.length() == 0 || !geositeOut.exists() || geositeOut.length() == 0
-            if (!needLib && !needGeo) {
-                continue
-            }
-            ZipInputStream zip = new ZipInputStream(new BufferedInputStream(new FileInputStream(zipFile)))
-            ZipEntry entry
-            byte[] buffer = new byte[8192]
-            while ((entry = zip.getNextEntry()) != null) {
-                if (entry.isDirectory()) {
-                    continue
-                }
-                String name = entry.getName()
-                if (needLib && ("xray".equals(name) || name.endsWith("/xray"))) {
-                    libOut.withOutputStream { output ->
-                        int read
-                        while ((read = zip.read(buffer)) > 0) {
-                            output.write(buffer, 0, read)
-                        }
-                    }
-                    libOut.setExecutable(true, false)
-                } else if (needGeo && "geoip.dat".equals(name)) {
-                    geoipOut.withOutputStream { output ->
-                        int read
-                        while ((read = zip.read(buffer)) > 0) {
-                            output.write(buffer, 0, read)
-                        }
-                    }
-                } else if (needGeo && "geosite.dat".equals(name)) {
-                    geositeOut.withOutputStream { output ->
-                        int read
-                        while ((read = zip.read(buffer)) > 0) {
-                            output.write(buffer, 0, read)
-                        }
-                    }
-                }
-            }
-            zip.close()
-        }
-    }
-}
-
 android {
     compileSdkVersion 36
     buildToolsVersion '36.0.0'
     ndkVersion "27.2.12479018"
 
-    sourceSets.main.jniLibs.srcDirs = ['./jni/', xrayJniDir]
-    sourceSets.main.assets.srcDirs += [xrayAssetsDir]
+    sourceSets.main.jniLibs.srcDirs = ['./jni/']
 
     externalNativeBuild {
         cmake {
@@ -369,4 +273,3 @@ task checkVisibility {
 }
 
 preBuild.dependsOn checkVisibility
-preBuild.dependsOn prepareXrayCore
