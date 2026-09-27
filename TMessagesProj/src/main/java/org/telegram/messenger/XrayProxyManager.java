@@ -177,14 +177,14 @@ public class XrayProxyManager {
     public static void maybeStartFromApp() {
         SharedConfig.loadProxyList();
         if (SharedConfig.currentProxy != null
-                && SharedConfig.currentProxy.proxyType == SharedConfig.ProxyInfo.PROXY_TYPE_XRAY_VLESS
+                && SharedConfig.currentProxy.isXrayVless()
                 && MessagesController.getGlobalMainSettings().getBoolean("proxy_enabled", false)) {
             startService();
         }
     }
 
     public static void ensureRunning(SharedConfig.ProxyInfo info) {
-        if (info == null || info.proxyType != SharedConfig.ProxyInfo.PROXY_TYPE_XRAY_VLESS) {
+        if (info == null || !info.isXrayVless()) {
             return;
         }
         if (TextUtils.isEmpty(info.vlessId)) {
@@ -200,7 +200,7 @@ public class XrayProxyManager {
         }
         try {
             if (BuildVars.LOGS_ENABLED) {
-                FileLog.d("Xray: ensureRunning " + info.address + ":" + info.port);
+                FileLog.d("Xray: ensureRunning " + info.settings.getAddress() + ":" + info.settings.getPort());
             }
             markStarting();
             File xrayDir = ApplicationLoader.getFilesDirFixed("xray");
@@ -493,8 +493,8 @@ public class XrayProxyManager {
         }
 
         JSONObject vnext = new JSONObject();
-        vnext.put("address", info.address);
-        vnext.put("port", info.port);
+        vnext.put("address", info.settings.getAddress());
+        vnext.put("port", info.settings.getPort());
         vnext.put("users", new JSONArray().put(user));
 
         JSONObject settings = new JSONObject();

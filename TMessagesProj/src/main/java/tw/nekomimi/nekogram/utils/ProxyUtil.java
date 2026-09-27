@@ -19,6 +19,7 @@ import org.telegram.messenger.NotificationCenter;
 import org.telegram.messenger.R;
 import org.telegram.messenger.SharedConfig;
 import org.telegram.messenger.Utilities;
+import org.telegram.utils.proxy.ProxySettings;
 import org.telegram.ui.ActionBar.AlertDialog;
 import org.json.JSONArray;
 import org.json.JSONObject;
@@ -65,7 +66,7 @@ public class ProxyUtil {
             if (i > 0) {
                 message.append("\n");
             }
-            message.append(proxies.get(i).address);
+            message.append(proxies.get(i).settings.getAddress());
         }
         AlertDialog.Builder builder = new AlertDialog.Builder(ctx);
         builder.setMessage(message.toString());
@@ -482,8 +483,13 @@ public class ProxyUtil {
         if (TextUtils.isEmpty(address) || port <= 0 || user == null) {
             return null;
         }
-        SharedConfig.ProxyInfo info = new SharedConfig.ProxyInfo(address, port, "", "", "");
-        info.proxyType = SharedConfig.ProxyInfo.PROXY_TYPE_XRAY_VLESS;
+        SharedConfig.ProxyInfo info = new SharedConfig.ProxyInfo(
+                new ProxySettings.Builder()
+                        .type(ProxySettings.Type.XRAY_VLESS)
+                        .address(address)
+                        .port(port)
+                        .build()
+        );
         info.vlessId = user.optString("id", "");
         info.vlessEncryption = user.optString("encryption", "none");
         info.vlessFlow = user.optString("flow", "");

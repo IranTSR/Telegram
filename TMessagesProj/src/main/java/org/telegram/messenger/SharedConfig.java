@@ -407,6 +407,9 @@ public class SharedConfig {
         public String vlessMode;
         public boolean vlessAllowInsecure;
         public String vlessRemark;
+        public boolean isSubscription;
+        public String subscriptionName = "";
+        public String proxyName = "";
         public String vlessRawQuery;
         public String vlessAdvancedJson;
 
@@ -533,8 +536,23 @@ public class SharedConfig {
             params.add(URLEncoder.encode(key, "UTF-8") + "=" + URLEncoder.encode(value, "UTF-8"));
         }
 
-        public static ProxyInfo fromVlessUrl(String url) {
-            try {
+        public static ProxyInfo fromUrl(String url) {
+            if (url != null && url.toLowerCase().startsWith("vless://")) {
+                return fromVlessUrl(url);
+            }
+            android.net.Uri lnk = android.net.Uri.parse(url);
+            if (lnk == null) throw new IllegalArgumentException(url);
+            ProxySettings settings = ProxySettings.fromUri(lnk);
+            if (settings == null) throw new IllegalArgumentException(url);
+            ProxyInfo info = new ProxyInfo(settings);
+            String fragment = lnk.getFragment();
+            if (!TextUtils.isEmpty(fragment)) {
+                info.proxyName = fragment;
+            }
+            return info;
+        }
+
+        public static ProxyInfo fromVlessUrl(String url) {            try {
                 java.net.URI uri = new java.net.URI(url);
                 int port = uri.getPort() > 0 ? uri.getPort() : 443;
                 ProxySettings settings = ProxySettings.builder()
@@ -683,6 +701,9 @@ public class SharedConfig {
                 info.vlessRemark = data.readString(false);
                 info.vlessRawQuery = data.readString(false);
                 info.vlessAdvancedJson = data.readString(false);
+                info.subscriptionName = data.readString(false);
+                info.proxyName = data.readString(false);
+                info.isSubscription = data.readBool(false);
                 info.normalizeVlessFields();
             }
 
@@ -721,12 +742,20 @@ public class SharedConfig {
             data.writeString(vlessRemark);
             data.writeString(vlessRawQuery);
             data.writeString(vlessAdvancedJson);
+            data.writeString(subscriptionName != null ? subscriptionName : "");
+            data.writeString(proxyName != null ? proxyName : "");
+            data.writeBool(isSubscription);
         }
     }
 
     public static ArrayList<ProxyInfo> proxyList = new ArrayList<>();
     private static boolean proxyListLoaded;
     public static ProxyInfo currentProxy;
+
+    public static ArrayList<ProxyInfo> getProxyList() {
+        loadProxyList();
+        return proxyList;
+    }
 
     public static void saveConfig() {
         synchronized (sync) {
@@ -1788,13 +1817,43 @@ public class SharedConfig {
     }
 
     public static ProxyInfo addProxy(ProxyInfo proxyInfo) {
+        return addProxy(proxyInfo, false);
+    }
+
+    public static ProxyInfo addProxy(ProxyInfo proxyInfo, boolean fromSubscription) {
         loadProxyList();
         int count = proxyList.size();
         for (int a = 0; a < count; a++) {
             ProxyInfo info = proxyList.get(a);
             if (isSameProxy(proxyInfo, info)) {
+                boolean changed = false;
+                if (fromSubscription && !info.isSubscription) {
+                    info.isSubscription = true;
+                    changed = true;
+                }
+                if (fromSubscription && TextUtils.isEmpty(info.subscriptionName) && !TextUtils.isEmpty(proxyInfo.subscriptionName)) {
+                    info.subscriptionName = proxyInfo.subscriptionName;
+                    changed = true;
+                }
+                if (info.isXrayVless()) {
+                    if (TextUtils.isEmpty(info.vlessRemark) && !TextUtils.isEmpty(proxyInfo.vlessRemark)) {
+                        info.vlessRemark = proxyInfo.vlessRemark;
+                        changed = true;
+                    }
+                } else {
+                    if (TextUtils.isEmpty(info.proxyName) && !TextUtils.isEmpty(proxyInfo.proxyName)) {
+                        info.proxyName = proxyInfo.proxyName;
+                        changed = true;
+                    }
+                }
+                if (changed) {
+                    saveProxyList();
+                }
                 return info;
             }
+        }
+        if (fromSubscription) {
+            proxyInfo.isSubscription = true;
         }
         proxyList.add(0, proxyInfo);
         saveProxyList();
