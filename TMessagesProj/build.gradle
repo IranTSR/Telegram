@@ -116,12 +116,15 @@ dependencies {
 
 def nativeTarget = project.findProperty("nativeTarget")?.toString() ?: ""
 def xrayVersion = "v26.3.27"
+// Recent Xray-core releases only ship android binaries for arm64-v8a and x86_64.
+// armeabi-v7a and x86 have no official android asset, so they must be supplied
+// as prebuilt binaries (built from the same xrayVersion with Go, GOOS=android)
+// via XRAY_PREBUILT_DIR/<abi>/libxray.so (see the CI workflow).
 def xrayAssetMap = [
     "arm64-v8a": "Xray-android-arm64-v8a.zip",
-    "armeabi-v7a": "Xray-android-arm32-v7a.zip",
     "x86_64": "Xray-android-amd64.zip",
-    "x86": "Xray-android-386.zip",
 ]
+def xrayPrebuiltDir = System.getenv("XRAY_PREBUILT_DIR") ? new File(System.getenv("XRAY_PREBUILT_DIR")) : null
 def xrayOutputDir = file("$buildDir/xray")
 def xrayDownloadDir = new File(xrayOutputDir, "download")
 def xrayJniDir = new File(xrayOutputDir, "jniLibs")
@@ -132,6 +135,40 @@ if (nativeTarget != 'SKIP') {
         xrayTargets = [nativeTarget]
     } else {
         xrayTargets = ["armeabi-v7a", "arm64-v8a", "x86", "x86_64"]
+    }
+}
+
+def downloadXrayAsset = { File zipFile, String assetName ->
+    if (!zipFile.exists() || zipFile.length() == 0) {
+        def url = new URL("https://github.com/XTLS/Xray-core/releases/download/${xrayVersion}/${assetName}")
+        url.withInputStream { input ->
+            zipFile.withOutputStream { output ->
+                output << input
+            }
+        }
+    }
+}
+
+def extractXrayZip = { File zipFile, byte[] buffer, Closure<File> picker ->
+    ZipInputStream zip = new ZipInputStream(new BufferedInputStream(new FileInputStream(zipFile)))
+    try {
+        ZipEntry entry
+        while ((entry = zip.getNextEntry()) != null) {
+            if (entry.isDirectory()) {
+                continue
+            }
+            File out = picker.call(entry.getName())
+            if (out != null) {
+                out.withOutputStream { output ->
+                    int read
+                    while ((read = zip.read(buffer)) > 0) {
+                        output.write(buffer, 0, read)
+                    }
+                }
+            }
+        }
+    } finally {
+        zip.close()
     }
 }
 
@@ -148,63 +185,42 @@ def prepareXrayCore = tasks.register("prepareXrayCore") {
         xrayJniDir.mkdirs()
         def assetsDir = new File(xrayAssetsDir, "xray")
         assetsDir.mkdirs()
+        byte[] buffer = new byte[8192]
+        // geoip.dat/geosite.dat are arch-independent: always take them from the arm64 asset.
+        def geoipOut = new File(assetsDir, "geoip.dat")
+        def geositeOut = new File(assetsDir, "geosite.dat")
+        if (!geoipOut.exists() || geoipOut.length() == 0 || !geositeOut.exists() || geositeOut.length() == 0) {
+            def geoZip = new File(xrayDownloadDir, xrayAssetMap["arm64-v8a"])
+            downloadXrayAsset(geoZip, xrayAssetMap["arm64-v8a"])
+            extractXrayZip(geoZip, buffer) { name ->
+                if ("geoip.dat".equals(name)) return geoipOut
+                if ("geosite.dat".equals(name)) return geositeOut
+                return null
+            }
+        }
         for (String abi : xrayTargets) {
-            def assetName = xrayAssetMap[abi]
-            if (assetName == null) {
-                continue
-            }
-            def zipFile = new File(xrayDownloadDir, assetName)
-            if (!zipFile.exists() || zipFile.length() == 0) {
-                def url = new URL("https://github.com/XTLS/Xray-core/releases/download/${xrayVersion}/${assetName}")
-                url.withInputStream { input ->
-                    zipFile.withOutputStream { output ->
-                        output << input
-                    }
-                }
-            }
             def abiDir = new File(xrayJniDir, abi)
             abiDir.mkdirs()
             def libOut = new File(abiDir, "libxray.so")
-            def geoipOut = new File(assetsDir, "geoip.dat")
-            def geositeOut = new File(assetsDir, "geosite.dat")
-            boolean needLib = !libOut.exists() || libOut.length() == 0
-            boolean needGeo = !geoipOut.exists() || geoipOut.length() == 0 || !geositeOut.exists() || geositeOut.length() == 0
-            if (!needLib && !needGeo) {
+            if (libOut.exists() && libOut.length() > 0) {
                 continue
             }
-            ZipInputStream zip = new ZipInputStream(new BufferedInputStream(new FileInputStream(zipFile)))
-            ZipEntry entry
-            byte[] buffer = new byte[8192]
-            while ((entry = zip.getNextEntry()) != null) {
-                if (entry.isDirectory()) {
-                    continue
+            def prebuilt = xrayPrebuiltDir != null ? new File(new File(xrayPrebuiltDir, abi), "libxray.so") : null
+            if (prebuilt != null && prebuilt.exists() && prebuilt.length() > 0) {
+                java.nio.file.Files.copy(prebuilt.toPath(), libOut.toPath(), java.nio.file.StandardCopyOption.REPLACE_EXISTING)
+            } else {
+                def assetName = xrayAssetMap[abi]
+                if (assetName == null) {
+                    throw new GradleException("XRay: no official android binary for ABI '${abi}' in ${xrayVersion}; provide it as XRAY_PREBUILT_DIR/${abi}/libxray.so")
                 }
-                String name = entry.getName()
-                if (needLib && ("xray".equals(name) || name.endsWith("/xray"))) {
-                    libOut.withOutputStream { output ->
-                        int read
-                        while ((read = zip.read(buffer)) > 0) {
-                            output.write(buffer, 0, read)
-                        }
-                    }
-                    libOut.setExecutable(true, false)
-                } else if (needGeo && "geoip.dat".equals(name)) {
-                    geoipOut.withOutputStream { output ->
-                        int read
-                        while ((read = zip.read(buffer)) > 0) {
-                            output.write(buffer, 0, read)
-                        }
-                    }
-                } else if (needGeo && "geosite.dat".equals(name)) {
-                    geositeOut.withOutputStream { output ->
-                        int read
-                        while ((read = zip.read(buffer)) > 0) {
-                            output.write(buffer, 0, read)
-                        }
-                    }
+                def zipFile = new File(xrayDownloadDir, assetName)
+                downloadXrayAsset(zipFile, assetName)
+                extractXrayZip(zipFile, buffer) { name ->
+                    if ("xray".equals(name) || name.endsWith("/xray")) return libOut
+                    return null
                 }
             }
-            zip.close()
+            libOut.setExecutable(true, false)
         }
     }
 }
