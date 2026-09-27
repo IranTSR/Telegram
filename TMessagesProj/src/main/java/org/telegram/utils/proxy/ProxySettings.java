@@ -27,7 +27,8 @@ public final class ProxySettings {
     public enum Type {
         SOCKS5,
         MTPROTO,
-        WEB
+        WEB,
+        XRAY_VLESS
     }
 
     private final @NonNull Type type;
@@ -56,6 +57,11 @@ public final class ProxySettings {
             port = builder.port;
             user = builder.user;
             password = builder.password;
+        } else if (type == Type.XRAY_VLESS) {
+            secret = "";
+            port = builder.port;
+            user = "";
+            password = "";
         } else {
             throw new IllegalArgumentException();
         }
@@ -209,6 +215,12 @@ public final class ProxySettings {
             case WEB:
                 editor.putString("proxy_secret", secret);
                 editor.remove("proxy_port");
+                editor.remove("proxy_pass");
+                editor.remove("proxy_user");
+                break;
+            case XRAY_VLESS:
+                editor.putInt("proxy_port", port);
+                editor.remove("proxy_secret");
                 editor.remove("proxy_pass");
                 editor.remove("proxy_user");
                 break;
@@ -523,6 +535,8 @@ public final class ProxySettings {
                 return 1;
             case WEB:
                 return 2;
+            case XRAY_VLESS:
+                return 3;
         }
         return 0;
     }
@@ -535,6 +549,8 @@ public final class ProxySettings {
                 return Type.MTPROTO;
             case 2:
                 return Type.WEB;
+            case 3:
+                return Type.XRAY_VLESS;
         }
         return Type.SOCKS5;
     }

@@ -45,6 +45,7 @@ import org.telegram.messenger.SharedConfig;
 import org.telegram.messenger.StatsController;
 import org.telegram.messenger.UserConfig;
 import org.telegram.messenger.Utilities;
+import org.telegram.messenger.XrayProxyManager;
 import org.telegram.utils.proxy.WebProxyConnectionTester;
 import org.telegram.utils.proxy.WebProxyTransport;
 import org.telegram.utils.proxy.ProxySettings;
@@ -115,6 +116,9 @@ public class ConnectionsManager extends BaseController {
     public final static byte USE_IPV4_IPV6_RANDOM = 2;
 
     private static long lastDnsRequestTime;
+
+    private static final Object xrayProxyLock = new Object();
+    private static boolean xrayProxyWaiting;
 
     public final static int DEFAULT_DATACENTER_ID = Integer.MAX_VALUE;
 
@@ -634,7 +638,14 @@ public class ConnectionsManager extends BaseController {
         final SharedPreferences preferences = ApplicationLoader.applicationContext.getSharedPreferences("mainconfig", Activity.MODE_PRIVATE);
         final ProxySettings proxySettings = ProxySettings.fromSharedPreferences(preferences);
         if (preferences.getBoolean("proxy_enabled", false) && proxySettings.isValid()) {
-            if (proxySettings.getType() == ProxySettings.Type.WEB) {
+            if (proxySettings.getType() == ProxySettings.Type.XRAY_VLESS) {
+                XrayProxyManager.startService();
+                if (XrayProxyManager.isSocksReady()) {
+                    native_setProxySettings(currentAccount, XrayProxyManager.LOCAL_ADDRESS, XrayProxyManager.getLocalSocksPort(), "", "", "");
+                } else {
+                    scheduleXrayProxyApply();
+                }
+            } else if (proxySettings.getType() == ProxySettings.Type.WEB) {
                 int localPort = WebProxyTransport.start(proxySettings.getAddress(), proxySettings.getSecret());
                 native_setProxySettings(currentAccount, "127.0.0.1", localPort != 0 ? localPort : 9, "", "",
                         proxySettings.getSecret());
@@ -948,6 +959,8 @@ public class ConnectionsManager extends BaseController {
         String username = "";
         String password = "";
         String secret = "";
+        boolean isXray = settings != null && settings.getType() == ProxySettings.Type.XRAY_VLESS;
+        boolean xrayDeferred = false;
 
         if (enabled && settings != null && settings.isValid()) {
             address = settings.getAddress();
@@ -964,9 +977,27 @@ public class ConnectionsManager extends BaseController {
                 password = "";
             } else {
                 WebProxyTransport.stop();
+                if (isXray) {
+                    XrayProxyManager.startService();
+                    if (XrayProxyManager.isSocksReady()) {
+                        address = XrayProxyManager.LOCAL_ADDRESS;
+                        port = XrayProxyManager.getLocalSocksPort();
+                        username = "";
+                        password = "";
+                        secret = "";
+                    } else {
+                        scheduleXrayProxyApply();
+                        xrayDeferred = true;
+                        enabled = false;
+                    }
+                }
             }
         } else {
             WebProxyTransport.stop();
+        }
+
+        if (isXray && !enabled && !xrayDeferred) {
+            XrayProxyManager.stopService();
         }
 
         for (int a = 0; a < UserConfig.MAX_ACCOUNT_COUNT; a++) {
@@ -980,6 +1011,36 @@ public class ConnectionsManager extends BaseController {
                 accountInstance.getMessagesController().checkPromoInfo(true);
             }
         }
+    }
+
+    private static void scheduleXrayProxyApply() {
+        synchronized (xrayProxyLock) {
+            if (xrayProxyWaiting) {
+                return;
+            }
+            xrayProxyWaiting = true;
+        }
+        Utilities.globalQueue.postRunnable(() -> {
+            try {
+                boolean ready = XrayProxyManager.waitForSocksReady(180_000);
+                if (!ready) {
+                    return;
+                }
+                SharedConfig.loadProxyList();
+                SharedPreferences preferences = ApplicationLoader.applicationContext.getSharedPreferences("mainconfig", Activity.MODE_PRIVATE);
+                if (!preferences.getBoolean("proxy_enabled", false)) {
+                    return;
+                }
+                if (SharedConfig.currentProxy == null || SharedConfig.currentProxy.settings.getType() != ProxySettings.Type.XRAY_VLESS) {
+                    return;
+                }
+                setProxySettings(true, SharedConfig.currentProxy.settings);
+            } finally {
+                synchronized (xrayProxyLock) {
+                    xrayProxyWaiting = false;
+                }
+            }
+        });
     }
 
     public static native void native_switchBackend(int currentAccount, boolean restart);
