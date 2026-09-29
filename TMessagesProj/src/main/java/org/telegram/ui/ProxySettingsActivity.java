@@ -1202,7 +1202,11 @@ public class ProxySettingsActivity extends BaseFragment {
             }
             AlertDialog.Builder builder = new AlertDialog.Builder(getParentActivity());
             builder.setTitle(title);
-            builder.setSingleChoiceItems(labels, checked, (dialog, which) -> {
+            CharSequence[] displayLabels = new CharSequence[labels.length];
+            for (int i = 0; i < labels.length; i++) {
+                displayLabels[i] = i == checked ? "✓ " + labels[i] : labels[i];
+            }
+            builder.setItems(displayLabels, (dialog, which) -> {
                 editText.setText(labels[which]);
                 checkShareDone(true);
                 dialog.dismiss();
