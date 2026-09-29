@@ -225,12 +225,91 @@ def prepareXrayCore = tasks.register("prepareXrayCore") {
     }
 }
 
+def aetherVersion = "v2.1.0"
+// Official Aether android assets only exist for arm64-v8a, armeabi-v7a and
+// x86_64. x86 has no official asset: it can be supplied as a prebuilt via
+// AETHER_PREBUILT_DIR/x86/libaether.so (see the CI workflow). Without it,
+// libaether.so is skipped for x86 and the app transparently disables Aether
+// on x86 devices.
+def aetherAssetMap = [
+    "arm64-v8a": "aether-android-arm64.tar.gz",
+    "armeabi-v7a": "aether-android-armv7.tar.gz",
+    "x86_64": "aether-android-x86_64.tar.gz",
+]
+def aetherPrebuiltDir = System.getenv("AETHER_PREBUILT_DIR") ? new File(System.getenv("AETHER_PREBUILT_DIR")) : null
+def aetherOutputDir = file("$buildDir/aether")
+def aetherDownloadDir = new File(aetherOutputDir, "download")
+def aetherJniDir = new File(aetherOutputDir, "jniLibs")
+def aetherTargets = []
+if (nativeTarget != 'SKIP') {
+    if (!nativeTarget.isBlank()) {
+        aetherTargets = [nativeTarget]
+    } else {
+        aetherTargets = ["armeabi-v7a", "arm64-v8a", "x86", "x86_64"]
+    }
+}
+
+def downloadAetherAsset = { File tarFile, String assetName ->
+    if (!tarFile.exists() || tarFile.length() == 0) {
+        def url = new URL("https://github.com/CluvexStudio/Aether/releases/download/${aetherVersion}/${assetName}")
+        url.withInputStream { input ->
+            tarFile.withOutputStream { output ->
+                output << input
+            }
+        }
+    }
+}
+
+def prepareAetherCore = tasks.register("prepareAetherCore") {
+    inputs.property("aetherVersion", aetherVersion)
+    inputs.property("aetherTargets", aetherTargets.join(","))
+    outputs.dir(aetherJniDir)
+    doLast {
+        if (aetherTargets.isEmpty()) {
+            return
+        }
+        aetherDownloadDir.mkdirs()
+        aetherJniDir.mkdirs()
+        for (String abi : aetherTargets) {
+            def abiDir = new File(aetherJniDir, abi)
+            abiDir.mkdirs()
+            def libOut = new File(abiDir, "libaether.so")
+            if (libOut.exists() && libOut.length() > 0) {
+                continue
+            }
+            def prebuilt = aetherPrebuiltDir != null ? new File(new File(aetherPrebuiltDir, abi), "libaether.so") : null
+            if (prebuilt != null && prebuilt.exists() && prebuilt.length() > 0) {
+                java.nio.file.Files.copy(prebuilt.toPath(), libOut.toPath(), java.nio.file.StandardCopyOption.REPLACE_EXISTING)
+            } else {
+                def assetName = aetherAssetMap[abi]
+                if (assetName == null) {
+                    project.logger.lifecycle("Aether: no official android binary for ABI '${abi}' in ${aetherVersion}; skipping libaether.so (Aether will be unavailable on ${abi})")
+                    continue
+                }
+                def tarFile = new File(aetherDownloadDir, assetName)
+                downloadAetherAsset(tarFile, assetName)
+                def tmpDir = new File(aetherDownloadDir, "extract-" + abi)
+                project.delete(tmpDir)
+                tmpDir.mkdirs()
+                ant.untar(src: tarFile, dest: tmpDir, compression: "gzip")
+                def binFile = new File(tmpDir, "aether")
+                if (!binFile.exists() || binFile.length() == 0) {
+                    throw new GradleException("Aether: 'aether' binary not found inside ${assetName}")
+                }
+                java.nio.file.Files.copy(binFile.toPath(), libOut.toPath(), java.nio.file.StandardCopyOption.REPLACE_EXISTING)
+                project.delete(tmpDir)
+            }
+            libOut.setExecutable(true, false)
+        }
+    }
+}
+
 android {
     compileSdkVersion 36
     buildToolsVersion '36.0.0'
     ndkVersion "27.2.12479018"
 
-    sourceSets.main.jniLibs.srcDirs = ['./jni/', xrayJniDir]
+    sourceSets.main.jniLibs.srcDirs = ['./jni/', xrayJniDir, aetherJniDir]
     sourceSets.main.assets.srcDirs += [xrayAssetsDir]
 
     externalNativeBuild {
@@ -388,3 +467,4 @@ task checkVisibility {
 
 preBuild.dependsOn checkVisibility
 preBuild.dependsOn prepareXrayCore
+preBuild.dependsOn prepareAetherCore

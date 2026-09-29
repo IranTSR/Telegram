@@ -235,6 +235,10 @@ public class ProxyListActivity extends BaseFragment implements NotificationCente
             if (proxyInfo.isXrayVless()) {
                 String title = !TextUtils.isEmpty(proxyInfo.vlessRemark) ? proxyInfo.vlessRemark : proxyInfo.settings.getAddress() + ":" + proxyInfo.settings.getPort();
                 textView.setText(title + " (VLESS)");
+            } else if (proxyInfo.isAether()) {
+                String title = !TextUtils.isEmpty(proxyInfo.proxyName) ? proxyInfo.proxyName : "Aether";
+                String detail = !TextUtils.isEmpty(proxyInfo.aetherProtocol) ? proxyInfo.aetherProtocol.toUpperCase() : "";
+                textView.setText(title + (TextUtils.isEmpty(detail) ? " (Aether)" : " (Aether " + detail + ")"));
             } else {
                 textView.setText(proxyInfo.settings.getType() == ProxySettings.Type.WEB
                         ? proxyInfo.settings.getAddress() + " (WEB)"

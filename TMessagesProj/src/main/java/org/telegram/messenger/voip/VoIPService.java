@@ -113,6 +113,7 @@ import org.telegram.messenger.NotificationsController;
 import org.telegram.messenger.R;
 import org.telegram.messenger.SharedConfig;
 import org.telegram.messenger.XrayProxyManager;
+import org.telegram.messenger.AetherProxyManager;
 import org.telegram.messenger.StatsController;
 import org.telegram.messenger.UserConfig;
 import org.telegram.messenger.UserObject;
@@ -3457,6 +3458,8 @@ public class VoIPService extends Service implements SensorEventListener, AudioMa
 				SharedConfig.ProxyInfo currentProxy = SharedConfig.currentProxy;
 				if (currentProxy != null && currentProxy.isXrayVless() && XrayProxyManager.isRunning() && XrayProxyManager.isSocksReady()) {
 					proxy = new Instance.Proxy(XrayProxyManager.LOCAL_ADDRESS, XrayProxyManager.getLocalSocksPort(), null, null);
+				} else if (currentProxy != null && currentProxy.isAether() && AetherProxyManager.isRunning() && AetherProxyManager.isSocksReady()) {
+					proxy = new Instance.Proxy(AetherProxyManager.LOCAL_ADDRESS, AetherProxyManager.getLocalSocksPort(), null, null);
 				}
 			}
 

@@ -237,6 +237,8 @@ public class XrayProxyManager {
                 return;
             }
             stopProcessInternal();
+            // Never run two engines at once.
+            AetherProxyManager.stopProcess();
             File configFile = new File(xrayDir, "config.json");
             writeConfig(configFile, config);
             ProcessBuilder builder = new ProcessBuilder(binFile.getAbsolutePath(), "run", "-c", configFile.getAbsolutePath());

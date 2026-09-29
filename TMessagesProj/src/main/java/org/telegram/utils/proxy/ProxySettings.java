@@ -28,7 +28,8 @@ public final class ProxySettings {
         SOCKS5,
         MTPROTO,
         WEB,
-        XRAY_VLESS
+        XRAY_VLESS,
+        AETHER
     }
 
     private final @NonNull Type type;
@@ -58,6 +59,11 @@ public final class ProxySettings {
             user = builder.user;
             password = builder.password;
         } else if (type == Type.XRAY_VLESS) {
+            secret = "";
+            port = builder.port;
+            user = "";
+            password = "";
+        } else if (type == Type.AETHER) {
             secret = "";
             port = builder.port;
             user = "";
@@ -219,6 +225,12 @@ public final class ProxySettings {
                 editor.remove("proxy_user");
                 break;
             case XRAY_VLESS:
+                editor.putInt("proxy_port", port);
+                editor.remove("proxy_secret");
+                editor.remove("proxy_pass");
+                editor.remove("proxy_user");
+                break;
+            case AETHER:
                 editor.putInt("proxy_port", port);
                 editor.remove("proxy_secret");
                 editor.remove("proxy_pass");
@@ -537,6 +549,8 @@ public final class ProxySettings {
                 return 2;
             case XRAY_VLESS:
                 return 3;
+            case AETHER:
+                return 4;
         }
         return 0;
     }
@@ -551,6 +565,8 @@ public final class ProxySettings {
                 return Type.WEB;
             case 3:
                 return Type.XRAY_VLESS;
+            case 4:
+                return Type.AETHER;
         }
         return Type.SOCKS5;
     }

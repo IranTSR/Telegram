@@ -46,6 +46,7 @@ import org.telegram.messenger.StatsController;
 import org.telegram.messenger.UserConfig;
 import org.telegram.messenger.Utilities;
 import org.telegram.messenger.XrayProxyManager;
+import org.telegram.messenger.AetherProxyManager;
 import org.telegram.utils.proxy.WebProxyConnectionTester;
 import org.telegram.utils.proxy.WebProxyTransport;
 import org.telegram.utils.proxy.ProxySettings;
@@ -121,6 +122,8 @@ public class ConnectionsManager extends BaseController {
 
     private static final Object xrayProxyLock = new Object();
     private static boolean xrayProxyWaiting;
+    private static final Object aetherProxyLock = new Object();
+    private static boolean aetherProxyWaiting;
 
     public final static int DEFAULT_DATACENTER_ID = Integer.MAX_VALUE;
 
@@ -641,11 +644,20 @@ public class ConnectionsManager extends BaseController {
         final ProxySettings proxySettings = ProxySettings.fromSharedPreferences(preferences);
         if (preferences.getBoolean("proxy_enabled", false) && proxySettings.isValid()) {
             if (proxySettings.getType() == ProxySettings.Type.XRAY_VLESS) {
+                AetherProxyManager.stopProcess();
                 XrayProxyManager.startService();
                 if (XrayProxyManager.isSocksReady()) {
                     native_setProxySettings(currentAccount, XrayProxyManager.LOCAL_ADDRESS, XrayProxyManager.getLocalSocksPort(), "", "", "");
                 } else {
                     scheduleXrayProxyApply();
+                }
+            } else if (proxySettings.getType() == ProxySettings.Type.AETHER) {
+                XrayProxyManager.stopProcess();
+                AetherProxyManager.startService();
+                if (AetherProxyManager.isSocksReady()) {
+                    native_setProxySettings(currentAccount, AetherProxyManager.LOCAL_ADDRESS, AetherProxyManager.getLocalSocksPort(), "", "", "");
+                } else {
+                    scheduleAetherProxyApply();
                 }
             } else if (proxySettings.getType() == ProxySettings.Type.WEB) {
                 int localPort = WebProxyTransport.start(proxySettings.getAddress(), proxySettings.getSecret());
@@ -758,6 +770,9 @@ public class ConnectionsManager extends BaseController {
         if (settings.getType() == ProxySettings.Type.XRAY_VLESS) {
             return checkXrayProxy(settings, requestTimeDelegate);
         }
+        if (settings.getType() == ProxySettings.Type.AETHER) {
+            return checkAetherProxy(settings, requestTimeDelegate);
+        }
 
         return native_checkProxy(currentAccount, settings.getAddress(), settings.getPort(), settings.getUser(), settings.getPassword(), settings.getSecret(), requestTimeDelegate);
     }
@@ -793,6 +808,33 @@ public class ConnectionsManager extends BaseController {
 
     private void checkWebProxyInternal(ProxySettings settings, int port, RequestTimeDelegate requestTimeDelegate) {
         native_checkProxy(currentAccount, "127.0.0.1", port, "", "", settings.getSecret(), requestTimeDelegate);
+    }
+
+    private long checkAetherProxy(ProxySettings settings, RequestTimeDelegate requestTimeDelegate) {
+        SharedConfig.ProxyInfo current = SharedConfig.currentProxy;
+        boolean isActive = current != null && current.settings == settings
+                && SharedConfig.isProxyEnabled() && AetherProxyManager.isRunning() && AetherProxyManager.isSocksReady();
+        if (isActive) {
+            return native_checkProxy(currentAccount, AetherProxyManager.LOCAL_ADDRESS, AetherProxyManager.getLocalSocksPort(), "", "", "", requestTimeDelegate);
+        }
+        final long start = SystemClock.elapsedRealtime();
+        Utilities.globalQueue.postRunnable(() -> {
+            long time = -1;
+            Socket socket = new Socket();
+            try {
+                socket.connect(new InetSocketAddress(AetherProxyManager.LOCAL_ADDRESS, AetherProxyManager.getLocalSocksPort()), 5000);
+                time = SystemClock.elapsedRealtime() - start;
+            } catch (Exception ignored) {
+            } finally {
+                try {
+                    socket.close();
+                } catch (Exception ignored) {
+                }
+            }
+            final long result = time;
+            AndroidUtilities.runOnUIThread(() -> requestTimeDelegate.run(result));
+        });
+        return 0;
     }
 
     public void setAppPaused(final boolean value, final boolean byScreenState) {
@@ -994,7 +1036,9 @@ public class ConnectionsManager extends BaseController {
         String password = "";
         String secret = "";
         boolean isXray = settings != null && settings.getType() == ProxySettings.Type.XRAY_VLESS;
+        boolean isAether = settings != null && settings.getType() == ProxySettings.Type.AETHER;
         boolean xrayDeferred = false;
+        boolean aetherDeferred = false;
 
         if (enabled && settings != null && settings.isValid()) {
             address = settings.getAddress();
@@ -1012,6 +1056,7 @@ public class ConnectionsManager extends BaseController {
             } else {
                 WebProxyTransport.stop();
                 if (isXray) {
+                    AetherProxyManager.stopService();
                     XrayProxyManager.startService();
                     if (XrayProxyManager.isSocksReady()) {
                         address = XrayProxyManager.LOCAL_ADDRESS;
@@ -1024,14 +1069,33 @@ public class ConnectionsManager extends BaseController {
                         xrayDeferred = true;
                         enabled = false;
                     }
+                } else if (isAether) {
+                    XrayProxyManager.stopService();
+                    AetherProxyManager.startService();
+                    if (AetherProxyManager.isSocksReady()) {
+                        address = AetherProxyManager.LOCAL_ADDRESS;
+                        port = AetherProxyManager.getLocalSocksPort();
+                        username = "";
+                        password = "";
+                        secret = "";
+                    } else {
+                        scheduleAetherProxyApply();
+                        aetherDeferred = true;
+                        enabled = false;
+                    }
                 }
             }
         } else {
             WebProxyTransport.stop();
+            XrayProxyManager.stopService();
+            AetherProxyManager.stopService();
         }
 
         if (isXray && !enabled && !xrayDeferred) {
             XrayProxyManager.stopService();
+        }
+        if (isAether && !enabled && !aetherDeferred) {
+            AetherProxyManager.stopService();
         }
 
         for (int a = 0; a < UserConfig.MAX_ACCOUNT_COUNT; a++) {
@@ -1072,6 +1136,36 @@ public class ConnectionsManager extends BaseController {
             } finally {
                 synchronized (xrayProxyLock) {
                     xrayProxyWaiting = false;
+                }
+            }
+        });
+    }
+
+    private static void scheduleAetherProxyApply() {
+        synchronized (aetherProxyLock) {
+            if (aetherProxyWaiting) {
+                return;
+            }
+            aetherProxyWaiting = true;
+        }
+        Utilities.globalQueue.postRunnable(() -> {
+            try {
+                boolean ready = AetherProxyManager.waitForSocksReady(180_000);
+                if (!ready) {
+                    return;
+                }
+                SharedConfig.loadProxyList();
+                SharedPreferences preferences = ApplicationLoader.applicationContext.getSharedPreferences("mainconfig", Activity.MODE_PRIVATE);
+                if (!preferences.getBoolean("proxy_enabled", false)) {
+                    return;
+                }
+                if (SharedConfig.currentProxy == null || SharedConfig.currentProxy.settings.getType() != ProxySettings.Type.AETHER) {
+                    return;
+                }
+                setProxySettings(true, SharedConfig.currentProxy.settings);
+            } finally {
+                synchronized (aetherProxyLock) {
+                    aetherProxyWaiting = false;
                 }
             }
         });

@@ -63,7 +63,8 @@ public class SharedConfig {
     private final static int PROXY_SCHEMA_V2 = 2;
     private final static int PROXY_SCHEMA_V3 = 3;
     private final static int PROXY_SCHEMA_V4 = 4;
-    private final static int PROXY_CURRENT_SCHEMA_VERSION = PROXY_SCHEMA_V4;
+    private final static int PROXY_SCHEMA_V5 = 5;
+    private final static int PROXY_CURRENT_SCHEMA_VERSION = PROXY_SCHEMA_V5;
 
     public final static int PASSCODE_TYPE_PIN = 0,
             PASSCODE_TYPE_PASSWORD = 1;
@@ -413,9 +414,20 @@ public class SharedConfig {
         public String vlessRawQuery;
         public String vlessAdvancedJson;
 
+        // Aether fields (used when settings.getType() == ProxySettings.Type.AETHER)
+        public String aetherProtocol;
+        public String aetherScan;
+        public String aetherIp;
+        public String aetherTransport;
+        public boolean aetherFragment;
+        public String aetherNoize;
+        public boolean aetherQuickReconnect = true;
+        public String aetherPeers;
+
         public ProxyInfo(@NonNull ProxySettings proxySettings) {
             settings = proxySettings;
             normalizeVlessFields();
+            normalizeAetherFields();
         }
 
         public void normalizeVlessFields() {
@@ -487,8 +499,33 @@ public class SharedConfig {
             }
         }
 
+        public void normalizeAetherFields() {
+            if (this.aetherProtocol == null) {
+                this.aetherProtocol = "masque";
+            }
+            if (this.aetherScan == null) {
+                this.aetherScan = "turbo";
+            }
+            if (this.aetherIp == null) {
+                this.aetherIp = "v4";
+            }
+            if (this.aetherTransport == null) {
+                this.aetherTransport = "";
+            }
+            if (this.aetherNoize == null) {
+                this.aetherNoize = "firewall";
+            }
+            if (this.aetherPeers == null) {
+                this.aetherPeers = "";
+            }
+        }
+
         public boolean isXrayVless() {
             return settings != null && settings.getType() == ProxySettings.Type.XRAY_VLESS;
+        }
+
+        public boolean isAether() {
+            return settings != null && settings.getType() == ProxySettings.Type.AETHER;
         }
 
         public String getVlessLink() {
@@ -707,6 +744,18 @@ public class SharedConfig {
                 info.normalizeVlessFields();
             }
 
+            if (version >= PROXY_SCHEMA_V5) {
+                info.aetherProtocol = data.readString(false);
+                info.aetherScan = data.readString(false);
+                info.aetherIp = data.readString(false);
+                info.aetherTransport = data.readString(false);
+                info.aetherFragment = data.readBool(false);
+                info.aetherNoize = data.readString(false);
+                info.aetherQuickReconnect = data.readBool(false);
+                info.aetherPeers = data.readString(false);
+                info.normalizeAetherFields();
+            }
+
             return info;
         }
 
@@ -745,6 +794,14 @@ public class SharedConfig {
             data.writeString(subscriptionName != null ? subscriptionName : "");
             data.writeString(proxyName != null ? proxyName : "");
             data.writeBool(isSubscription);
+            data.writeString(aetherProtocol);
+            data.writeString(aetherScan);
+            data.writeString(aetherIp);
+            data.writeString(aetherTransport);
+            data.writeBool(aetherFragment);
+            data.writeString(aetherNoize);
+            data.writeBool(aetherQuickReconnect);
+            data.writeString(aetherPeers);
         }
     }
 
@@ -1755,7 +1812,7 @@ public class SharedConfig {
             if (count == -1) { // V2 or newer
                 int version = data.readByte(false);
 
-                if (version == PROXY_SCHEMA_V2 || version == PROXY_SCHEMA_V3 || version == PROXY_SCHEMA_V4) {
+                if (version == PROXY_SCHEMA_V2 || version == PROXY_SCHEMA_V3 || version == PROXY_SCHEMA_V4 || version == PROXY_SCHEMA_V5) {
                     count = data.readInt32(false);
 
                     for (int i = 0; i < count; i++) {
@@ -1889,6 +1946,16 @@ public class SharedConfig {
                     && a.vlessAllowInsecure == b.vlessAllowInsecure
                     && TextUtils.equals(a.vlessAdvancedJson, b.vlessAdvancedJson);
         }
+        if (a.isAether() && b.isAether()) {
+            return TextUtils.equals(a.aetherProtocol, b.aetherProtocol)
+                    && TextUtils.equals(a.aetherScan, b.aetherScan)
+                    && TextUtils.equals(a.aetherIp, b.aetherIp)
+                    && TextUtils.equals(a.aetherTransport, b.aetherTransport)
+                    && a.aetherFragment == b.aetherFragment
+                    && TextUtils.equals(a.aetherNoize, b.aetherNoize)
+                    && a.aetherQuickReconnect == b.aetherQuickReconnect
+                    && TextUtils.equals(a.aetherPeers, b.aetherPeers);
+        }
         return true;
     }
 
@@ -1915,6 +1982,9 @@ public class SharedConfig {
             }
             if (proxyInfo.isXrayVless()) {
                 XrayProxyManager.stopService();
+            }
+            if (proxyInfo.isAether()) {
+                AetherProxyManager.stopService();
             }
         }
         proxyList.remove(proxyInfo);

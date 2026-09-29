@@ -53,6 +53,7 @@ import org.telegram.messenger.NotificationCenter;
 import org.telegram.messenger.R;
 import org.telegram.messenger.SharedConfig;
 import org.telegram.messenger.XrayProxyManager;
+import org.telegram.messenger.AetherProxyManager;
 import org.telegram.messenger.SvgHelper;
 import org.telegram.messenger.Utilities;
 import org.telegram.utils.proxy.WebProxyTransport;
@@ -60,6 +61,7 @@ import org.telegram.utils.proxy.ProxySettings;
 import org.telegram.tgnet.ConnectionsManager;
 import org.telegram.ui.ActionBar.ActionBar;
 import org.telegram.ui.ActionBar.ActionBarMenuItem;
+import org.telegram.ui.ActionBar.AlertDialog;
 import org.telegram.ui.ActionBar.BaseFragment;
 import org.telegram.ui.ActionBar.Theme;
 import org.telegram.ui.ActionBar.ThemeDescription;
@@ -107,6 +109,31 @@ public class ProxySettingsActivity extends BaseFragment {
     private final static int FIELD_VLESS_MODE = 23;
     private final static int FIELD_VLESS_ALLOW_INSECURE = 24;
     private final static int FIELD_VLESS_ADVANCED_JSON = 25;
+    private final static int FIELD_AETHER_PROTOCOL = 26;
+    private final static int FIELD_AETHER_SCAN = 27;
+    private final static int FIELD_AETHER_IP = 28;
+    private final static int FIELD_AETHER_TRANSPORT = 29;
+    private final static int FIELD_AETHER_FRAGMENT = 30;
+    private final static int FIELD_AETHER_NOIZE = 31;
+    private final static int FIELD_AETHER_QUICK_RECONNECT = 32;
+    private final static int FIELD_AETHER_PEERS = 33;
+    private final static int FIELD_AETHER_NAME = 34;
+    private final static int FIELD_COUNT = 35;
+
+    private static final String[] AETHER_PROTOCOL_LABELS = {"MASQUE", "WireGuard", "gool", "mim"};
+    private static final String[] AETHER_PROTOCOL_VALUES = {"masque", "wg", "gool", "mim"};
+    private static final String[] AETHER_SCAN_LABELS = {"Turbo", "Balanced", "Thorough", "Verified", "Ironclad"};
+    private static final String[] AETHER_SCAN_VALUES = {"turbo", "balanced", "thorough", "verified", "ironclad"};
+    private static final String[] AETHER_IP_LABELS = {"IPv4", "IPv6", "Dual"};
+    private static final String[] AETHER_IP_VALUES = {"v4", "v6", "dual"};
+    private static final String[] AETHER_TRANSPORT_LABELS = {"Auto", "H2 (HTTP/2)", "H3 (HTTP/3)"};
+    private static final String[] AETHER_TRANSPORT_VALUES = {"", "h2", "h3"};
+    private static final String[] AETHER_FRAGMENT_LABELS = {"Off", "On"};
+    private static final String[] AETHER_FRAGMENT_VALUES = {"", "1"};
+    private static final String[] AETHER_NOIZE_LABELS = {"Off", "Light", "Firewall", "Balanced", "GFW", "Aggressive"};
+    private static final String[] AETHER_NOIZE_VALUES = {"off", "light", "firewall", "balanced", "gfw", "aggressive"};
+    private static final String[] AETHER_BOOL_LABELS = {"On", "Off"};
+    private static final String[] AETHER_BOOL_VALUES = {"1", ""};
 
     private EditTextBoldCursor[] inputFields;
     private ScrollView scrollView;
@@ -119,6 +146,7 @@ public class ProxySettingsActivity extends BaseFragment {
     private TextSettingsCell pasteCell;
     private TextSettingsCell redownloadCell;
     private TextSettingsCell xrayStatusCell;
+    private TextSettingsCell aetherStatusCell;
     private ActionBarMenuItem doneItem;
     private boolean xrayStatusUpdates;
     private final Runnable xrayStatusUpdater = new Runnable() {
@@ -128,10 +156,11 @@ public class ProxySettingsActivity extends BaseFragment {
                 return;
             }
             updateXrayStatusCell();
+            updateAetherStatusCell();
             AndroidUtilities.runOnUIThread(this, 500);
         }
     };
-    private RadioCell[] typeCell = new RadioCell[4];
+    private RadioCell[] typeCell = new RadioCell[5];
     private ProxySettings.Type currentType;
 
     private ProxySettings pasteProxySettings;
@@ -254,11 +283,11 @@ public class ProxySettingsActivity extends BaseFragment {
 
                     currentProxyInfo.settings = ProxySettings.builder()
                         .setType(currentType)
-                        .setAddress(inputFields[FIELD_IP].getText().toString())
-                        .setPort(currentType == ProxySettings.Type.WEB ? 0 : Utilities.parseInt(inputFields[FIELD_PORT].getText().toString()))
+                        .setAddress(currentType == ProxySettings.Type.AETHER ? "aether" : inputFields[FIELD_IP].getText().toString())
+                        .setPort(currentType == ProxySettings.Type.WEB ? 0 : currentType == ProxySettings.Type.AETHER ? AetherProxyManager.getLocalSocksPort() : Utilities.parseInt(inputFields[FIELD_PORT].getText().toString()))
                         .setUser(currentType == ProxySettings.Type.SOCKS5 ? inputFields[FIELD_USER].getText().toString() : "")
                         .setPassword(currentType == ProxySettings.Type.SOCKS5 ? inputFields[FIELD_PASSWORD].getText().toString() : "")
-                        .setSecret(currentType != ProxySettings.Type.SOCKS5 && currentType != ProxySettings.Type.XRAY_VLESS ? inputFields[FIELD_SECRET].getText().toString() : "")
+                        .setSecret(currentType != ProxySettings.Type.SOCKS5 && currentType != ProxySettings.Type.XRAY_VLESS && currentType != ProxySettings.Type.AETHER ? inputFields[FIELD_SECRET].getText().toString() : "")
                         .build();
                     if (currentType == ProxySettings.Type.XRAY_VLESS) {
                         currentProxyInfo.vlessId = inputFields[FIELD_VLESS_ID].getText().toString();
@@ -287,6 +316,17 @@ public class ProxySettingsActivity extends BaseFragment {
                             currentProxyInfo.vlessEncryption = "none";
                         }
                         currentProxyInfo.normalizeVlessFields();
+                    } else if (currentType == ProxySettings.Type.AETHER) {
+                        currentProxyInfo.aetherProtocol = aetherFieldValue(FIELD_AETHER_PROTOCOL, AETHER_PROTOCOL_LABELS, AETHER_PROTOCOL_VALUES);
+                        currentProxyInfo.aetherScan = aetherFieldValue(FIELD_AETHER_SCAN, AETHER_SCAN_LABELS, AETHER_SCAN_VALUES);
+                        currentProxyInfo.aetherIp = aetherFieldValue(FIELD_AETHER_IP, AETHER_IP_LABELS, AETHER_IP_VALUES);
+                        currentProxyInfo.aetherTransport = aetherFieldValue(FIELD_AETHER_TRANSPORT, AETHER_TRANSPORT_LABELS, AETHER_TRANSPORT_VALUES);
+                        currentProxyInfo.aetherFragment = "1".equals(aetherFieldValue(FIELD_AETHER_FRAGMENT, AETHER_FRAGMENT_LABELS, AETHER_FRAGMENT_VALUES));
+                        currentProxyInfo.aetherNoize = aetherFieldValue(FIELD_AETHER_NOIZE, AETHER_NOIZE_LABELS, AETHER_NOIZE_VALUES);
+                        currentProxyInfo.aetherQuickReconnect = "1".equals(aetherFieldValue(FIELD_AETHER_QUICK_RECONNECT, AETHER_BOOL_LABELS, AETHER_BOOL_VALUES));
+                        currentProxyInfo.aetherPeers = inputFields[FIELD_AETHER_PEERS].getText().toString();
+                        currentProxyInfo.proxyName = inputFields[FIELD_AETHER_NAME].getText().toString();
+                        currentProxyInfo.normalizeAetherFields();
                     }
 
                     SharedPreferences preferences = MessagesController.getGlobalMainSettings();
@@ -347,7 +387,7 @@ public class ProxySettingsActivity extends BaseFragment {
 
         final View.OnClickListener typeCellClickListener = view -> setProxyType(ProxySettings.intToType((Integer) view.getTag()), true);
 
-        for (int a = 0; a < 4; a++) {
+        for (int a = 0; a < 5; a++) {
             ProxySettings.Type t = ProxySettings.intToType(a);
 
             typeCell[a] = new RadioCell(context);
@@ -359,8 +399,14 @@ public class ProxySettingsActivity extends BaseFragment {
                 typeCell[a].setText(LocaleController.getString(R.string.UseProxyTelegram), t == currentType, true);
             } else if (a == 2) {
                 typeCell[a].setText(LocaleController.getString(R.string.UseProxyWeb), t == currentType, true);
+            } else if (a == 3) {
+                typeCell[a].setText(LocaleController.getString(R.string.UseProxyXrayVless), t == currentType, true);
             } else {
-                typeCell[a].setText(LocaleController.getString(R.string.UseProxyXrayVless), t == currentType, false);
+                typeCell[a].setText(LocaleController.getString(R.string.UseProxyAether), t == currentType, false);
+            }
+            if (a == 4 && !AetherProxyManager.isSupportedDevice()) {
+                // No Aether binary for this ABI (e.g. x86): hide the option entirely.
+                typeCell[a].setVisibility(View.GONE);
             }
             linearLayout2.addView(typeCell[a], LayoutHelper.createLinear(LayoutHelper.MATCH_PARENT, 50));
             typeCell[a].setOnClickListener(typeCellClickListener);
@@ -379,8 +425,8 @@ public class ProxySettingsActivity extends BaseFragment {
         inputFieldsContainer.setOutlineProvider(null);
         linearLayout2.addView(inputFieldsContainer, LayoutHelper.createLinear(LayoutHelper.MATCH_PARENT, LayoutHelper.WRAP_CONTENT));
 
-        inputFields = new EditTextBoldCursor[26];
-        for (int a = 0; a < 26; a++) {
+        inputFields = new EditTextBoldCursor[FIELD_COUNT];
+        for (int a = 0; a < FIELD_COUNT; a++) {
             FrameLayout container = new FrameLayout(context);
             inputFieldsContainer.addView(container, LayoutHelper.createLinear(LayoutHelper.MATCH_PARENT, 64));
 
@@ -617,6 +663,49 @@ public class ProxySettingsActivity extends BaseFragment {
                     inputFields[a].setHintText(LocaleController.getString(R.string.UseProxyVlessAdvancedJson));
                     inputFields[a].setText(currentProxyInfo.vlessAdvancedJson);
                     break;
+                case FIELD_AETHER_PROTOCOL:
+                    inputFields[a].setHintText(LocaleController.getString(R.string.UseProxyAetherProtocol));
+                    inputFields[a].setText(aetherFieldLabel(currentProxyInfo.aetherProtocol, AETHER_PROTOCOL_LABELS, AETHER_PROTOCOL_VALUES));
+                    setupAetherDropdown(a, LocaleController.getString(R.string.UseProxyAetherProtocol), AETHER_PROTOCOL_LABELS, AETHER_PROTOCOL_VALUES);
+                    break;
+                case FIELD_AETHER_SCAN:
+                    inputFields[a].setHintText(LocaleController.getString(R.string.UseProxyAetherScan));
+                    inputFields[a].setText(aetherFieldLabel(currentProxyInfo.aetherScan, AETHER_SCAN_LABELS, AETHER_SCAN_VALUES));
+                    setupAetherDropdown(a, LocaleController.getString(R.string.UseProxyAetherScan), AETHER_SCAN_LABELS, AETHER_SCAN_VALUES);
+                    break;
+                case FIELD_AETHER_IP:
+                    inputFields[a].setHintText(LocaleController.getString(R.string.UseProxyAetherIp));
+                    inputFields[a].setText(aetherFieldLabel(currentProxyInfo.aetherIp, AETHER_IP_LABELS, AETHER_IP_VALUES));
+                    setupAetherDropdown(a, LocaleController.getString(R.string.UseProxyAetherIp), AETHER_IP_LABELS, AETHER_IP_VALUES);
+                    break;
+                case FIELD_AETHER_TRANSPORT:
+                    inputFields[a].setHintText(LocaleController.getString(R.string.UseProxyAetherTransport));
+                    inputFields[a].setText(aetherFieldLabel(currentProxyInfo.aetherTransport, AETHER_TRANSPORT_LABELS, AETHER_TRANSPORT_VALUES));
+                    setupAetherDropdown(a, LocaleController.getString(R.string.UseProxyAetherTransport), AETHER_TRANSPORT_LABELS, AETHER_TRANSPORT_VALUES);
+                    break;
+                case FIELD_AETHER_FRAGMENT:
+                    inputFields[a].setHintText(LocaleController.getString(R.string.UseProxyAetherFragment));
+                    inputFields[a].setText(aetherFieldLabel(currentProxyInfo.aetherFragment ? "1" : "", AETHER_FRAGMENT_LABELS, AETHER_FRAGMENT_VALUES));
+                    setupAetherDropdown(a, LocaleController.getString(R.string.UseProxyAetherFragment), AETHER_FRAGMENT_LABELS, AETHER_FRAGMENT_VALUES);
+                    break;
+                case FIELD_AETHER_NOIZE:
+                    inputFields[a].setHintText(LocaleController.getString(R.string.UseProxyAetherNoize));
+                    inputFields[a].setText(aetherFieldLabel(currentProxyInfo.aetherNoize, AETHER_NOIZE_LABELS, AETHER_NOIZE_VALUES));
+                    setupAetherDropdown(a, LocaleController.getString(R.string.UseProxyAetherNoize), AETHER_NOIZE_LABELS, AETHER_NOIZE_VALUES);
+                    break;
+                case FIELD_AETHER_QUICK_RECONNECT:
+                    inputFields[a].setHintText(LocaleController.getString(R.string.UseProxyAetherQuickReconnect));
+                    inputFields[a].setText(aetherFieldLabel(currentProxyInfo.aetherQuickReconnect ? "1" : "", AETHER_BOOL_LABELS, AETHER_BOOL_VALUES));
+                    setupAetherDropdown(a, LocaleController.getString(R.string.UseProxyAetherQuickReconnect), AETHER_BOOL_LABELS, AETHER_BOOL_VALUES);
+                    break;
+                case FIELD_AETHER_PEERS:
+                    inputFields[a].setHintText(LocaleController.getString(R.string.UseProxyAetherPeers));
+                    inputFields[a].setText(currentProxyInfo.aetherPeers);
+                    break;
+                case FIELD_AETHER_NAME:
+                    inputFields[a].setHintText(LocaleController.getString(R.string.UseProxyAetherName));
+                    inputFields[a].setText(currentProxyInfo.proxyName);
+                    break;
             }
             inputFields[a].setSelection(inputFields[a].length());
 
@@ -833,22 +922,36 @@ public class ProxySettingsActivity extends BaseFragment {
         redownloadCell.setVisibility(View.GONE);
         linearLayout2.addView(redownloadCell, LayoutHelper.createLinear(LayoutHelper.MATCH_PARENT, LayoutHelper.WRAP_CONTENT));
         redownloadCell.setOnClickListener(v -> {
-            if (currentType != ProxySettings.Type.XRAY_VLESS) {
-                return;
-            }
-            boolean deleted = XrayProxyManager.deleteCoreFiles();
-            if (getParentActivity() != null) {
-                if (deleted) {
-                    Toast.makeText(getParentActivity(), LocaleController.getString(R.string.XrayProxyRedownloaded), Toast.LENGTH_SHORT).show();
-                } else {
-                    Toast.makeText(getParentActivity(), LocaleController.getString(R.string.XrayProxyRedownloadFailed), Toast.LENGTH_SHORT).show();
+            if (currentType == ProxySettings.Type.XRAY_VLESS) {
+                boolean deleted = XrayProxyManager.deleteCoreFiles();
+                if (getParentActivity() != null) {
+                    if (deleted) {
+                        Toast.makeText(getParentActivity(), LocaleController.getString(R.string.XrayProxyRedownloaded), Toast.LENGTH_SHORT).show();
+                    } else {
+                        Toast.makeText(getParentActivity(), LocaleController.getString(R.string.XrayProxyRedownloadFailed), Toast.LENGTH_SHORT).show();
+                    }
                 }
-            }
-            SharedPreferences preferences = MessagesController.getGlobalMainSettings();
-            boolean enabled = preferences.getBoolean("proxy_enabled", false);
-            if (enabled && SharedConfig.currentProxy != null && SharedConfig.currentProxy.isXrayVless()) {
-                XrayProxyManager.startService();
-                ConnectionsManager.setProxySettings(true, SharedConfig.currentProxy.settings);
+                SharedPreferences preferences = MessagesController.getGlobalMainSettings();
+                boolean enabled = preferences.getBoolean("proxy_enabled", false);
+                if (enabled && SharedConfig.currentProxy != null && SharedConfig.currentProxy.isXrayVless()) {
+                    XrayProxyManager.startService();
+                    ConnectionsManager.setProxySettings(true, SharedConfig.currentProxy.settings);
+                }
+            } else if (currentType == ProxySettings.Type.AETHER) {
+                boolean deleted = AetherProxyManager.deleteCoreFiles();
+                if (getParentActivity() != null) {
+                    if (deleted) {
+                        Toast.makeText(getParentActivity(), LocaleController.getString(R.string.AetherProxyRedownloaded), Toast.LENGTH_SHORT).show();
+                    } else {
+                        Toast.makeText(getParentActivity(), LocaleController.getString(R.string.AetherProxyRedownloadFailed), Toast.LENGTH_SHORT).show();
+                    }
+                }
+                SharedPreferences preferences = MessagesController.getGlobalMainSettings();
+                boolean enabled = preferences.getBoolean("proxy_enabled", false);
+                if (enabled && SharedConfig.currentProxy != null && SharedConfig.currentProxy.isAether()) {
+                    AetherProxyManager.startService();
+                    ConnectionsManager.setProxySettings(true, SharedConfig.currentProxy.settings);
+                }
             }
         });
 
@@ -858,6 +961,13 @@ public class ProxySettingsActivity extends BaseFragment {
         xrayStatusCell.setVisibility(View.GONE);
         xrayStatusCell.setEnabled(false);
         linearLayout2.addView(xrayStatusCell, LayoutHelper.createLinear(LayoutHelper.MATCH_PARENT, LayoutHelper.WRAP_CONTENT));
+
+        aetherStatusCell = new TextSettingsCell(context);
+        aetherStatusCell.setBackgroundDrawable(Theme.getSelectorDrawable(true));
+        aetherStatusCell.setTextColor(Theme.getColor(Theme.key_windowBackgroundWhiteBlackText));
+        aetherStatusCell.setVisibility(View.GONE);
+        aetherStatusCell.setEnabled(false);
+        linearLayout2.addView(aetherStatusCell, LayoutHelper.createLinear(LayoutHelper.MATCH_PARENT, LayoutHelper.WRAP_CONTENT));
 
         sectionCell[1] = new ShadowSectionCell(context);
         linearLayout2.addView(sectionCell[1], LayoutHelper.createLinear(LayoutHelper.MATCH_PARENT, LayoutHelper.WRAP_CONTENT));
@@ -1026,6 +1136,82 @@ public class ProxySettingsActivity extends BaseFragment {
         xrayStatusCell.setTextAndValue(title, value, false);
     }
 
+    private void updateAetherStatusCell() {
+        if (aetherStatusCell == null || currentType != ProxySettings.Type.AETHER) {
+            return;
+        }
+        String title = LocaleController.getString(R.string.AetherProxyCoreStatus);
+        String value;
+        int state = AetherProxyManager.getState();
+        if (state == AetherProxyManager.STATE_RUNNING) {
+            value = LocaleController.getString(R.string.AetherProxyStatusReady);
+        } else if (state == AetherProxyManager.STATE_STARTING) {
+            value = LocaleController.getString(R.string.AetherProxyStatusStarting);
+        } else if (state == AetherProxyManager.STATE_DOWNLOADING) {
+            long total = AetherProxyManager.getDownloadTotalBytes();
+            long current = AetherProxyManager.getDownloadBytes();
+            if (total > 0) {
+                int percent = (int) Math.min(100, (current * 100) / total);
+                value = LocaleController.formatString(R.string.AetherProxyStatusDownloadingPercent, percent);
+            } else {
+                value = LocaleController.getString(R.string.AetherProxyStatusDownloading);
+            }
+        } else if (state == AetherProxyManager.STATE_FAILED) {
+            value = LocaleController.getString(R.string.AetherProxyStatusFailed);
+        } else {
+            value = LocaleController.getString(R.string.AetherProxyStatusIdle);
+        }
+        aetherStatusCell.setTextAndValue(title, value, false);
+    }
+
+    private String aetherFieldLabel(String value, String[] labels, String[] values) {
+        for (int i = 0; i < values.length; i++) {
+            if (values[i].equals(value)) {
+                return labels[i];
+            }
+        }
+        return labels[0];
+    }
+
+    private String aetherFieldValue(int field, String[] labels, String[] values) {
+        if (inputFields[field] == null) {
+            return values[0];
+        }
+        String label = inputFields[field].getText().toString();
+        for (int i = 0; i < labels.length; i++) {
+            if (labels[i].equals(label)) {
+                return values[i];
+            }
+        }
+        return values[0];
+    }
+
+    private void setupAetherDropdown(int field, String title, String[] labels, String[] values) {
+        EditTextBoldCursor editText = inputFields[field];
+        editText.setFocusable(false);
+        editText.setFocusableInTouchMode(false);
+        editText.setClickable(true);
+        editText.setOnClickListener(v -> {
+            int checked = 0;
+            String current = editText.getText().toString();
+            for (int i = 0; i < labels.length; i++) {
+                if (labels[i].equals(current)) {
+                    checked = i;
+                    break;
+                }
+            }
+            AlertDialog.Builder builder = new AlertDialog.Builder(getParentActivity());
+            builder.setTitle(title);
+            builder.setSingleChoiceItems(labels, checked, (dialog, which) -> {
+                editText.setText(labels[which]);
+                checkShareDone(true);
+                dialog.dismiss();
+            });
+            builder.setNegativeButton(LocaleController.getString(R.string.Cancel), null);
+            showDialog(builder.create());
+        });
+    }
+
     private void checkShareDone(boolean animated) {
         if (shareCell == null || doneItem == null || inputFields[FIELD_IP] == null || inputFields[FIELD_PORT] == null) {
             return;
@@ -1038,6 +1224,8 @@ public class ProxySettingsActivity extends BaseFragment {
             enabled = inputFields[FIELD_IP].length() != 0
                     && Utilities.parseInt(inputFields[FIELD_PORT].getText().toString()) != 0
                     && inputFields[FIELD_VLESS_ID].length() != 0;
+        } else if (currentType == ProxySettings.Type.AETHER) {
+            enabled = true;
         } else {
             enabled = inputFields[FIELD_IP].length() != 0
                     && Utilities.parseInt(inputFields[FIELD_PORT].getText().toString()) != 0;
@@ -1091,6 +1279,9 @@ public class ProxySettingsActivity extends BaseFragment {
                 TransitionManager.beginDelayedTransition(linearLayout2, transitionSet);
             }
             boolean isXray = currentType == ProxySettings.Type.XRAY_VLESS;
+            boolean isAether = currentType == ProxySettings.Type.AETHER;
+            // Aether needs no server address/port: the engine dials Cloudflare itself.
+            ((View) inputFields[FIELD_IP].getParent()).setVisibility(isAether ? View.GONE : View.VISIBLE);
             if (currentType == ProxySettings.Type.SOCKS5) {
                 bottomCells[0].setVisibility(View.VISIBLE);
                 bottomCells[1].setVisibility(View.GONE);
@@ -1122,26 +1313,60 @@ public class ProxySettingsActivity extends BaseFragment {
                 bottomCells[0].setVisibility(View.GONE);
                 bottomCells[1].setVisibility(View.GONE);
                 bottomCells[2].setVisibility(View.VISIBLE);
+                bottomCells[2].setText(LocaleController.getString(R.string.UseProxyXrayVlessInfo));
+                redownloadCell.setText(LocaleController.getString(R.string.XrayProxyRedownload), false);
                 redownloadCell.setVisibility(View.VISIBLE);
                 xrayStatusCell.setVisibility(View.VISIBLE);
                 updateXrayStatusCell();
+                if (aetherStatusCell != null) {
+                    aetherStatusCell.setVisibility(View.GONE);
+                }
                 ((View) inputFields[FIELD_SECRET].getParent()).setVisibility(View.GONE);
                 ((View) inputFields[FIELD_PASSWORD].getParent()).setVisibility(View.GONE);
                 ((View) inputFields[FIELD_USER].getParent()).setVisibility(View.GONE);
                 ((View) inputFields[FIELD_PORT].getParent()).setVisibility(View.VISIBLE);
+            } else if (isAether) {
+                bottomCells[0].setVisibility(View.GONE);
+                bottomCells[1].setVisibility(View.GONE);
+                bottomCells[2].setVisibility(View.VISIBLE);
+                bottomCells[2].setText(LocaleController.getString(R.string.UseProxyAetherInfo));
+                redownloadCell.setText(LocaleController.getString(R.string.AetherProxyRedownload), false);
+                redownloadCell.setVisibility(View.VISIBLE);
+                xrayStatusCell.setVisibility(View.GONE);
+                if (aetherStatusCell != null) {
+                    aetherStatusCell.setVisibility(View.VISIBLE);
+                    updateAetherStatusCell();
+                }
+                ((View) inputFields[FIELD_SECRET].getParent()).setVisibility(View.GONE);
+                ((View) inputFields[FIELD_PASSWORD].getParent()).setVisibility(View.GONE);
+                ((View) inputFields[FIELD_USER].getParent()).setVisibility(View.GONE);
+                ((View) inputFields[FIELD_PORT].getParent()).setVisibility(View.GONE);
             }
             for (int f = FIELD_VLESS_ID; f <= FIELD_VLESS_ADVANCED_JSON; f++) {
                 ((View) inputFields[f].getParent()).setVisibility(isXray ? View.VISIBLE : View.GONE);
             }
-            if (!isXray) {
+            for (int f = FIELD_AETHER_PROTOCOL; f <= FIELD_AETHER_NAME; f++) {
+                ((View) inputFields[f].getParent()).setVisibility(isAether ? View.VISIBLE : View.GONE);
+            }
+            if (!isXray && !isAether) {
                 redownloadCell.setVisibility(View.GONE);
                 xrayStatusCell.setVisibility(View.GONE);
+                if (aetherStatusCell != null) {
+                    aetherStatusCell.setVisibility(View.GONE);
+                }
             }
-            shareCell.setVisibility(currentType == ProxySettings.Type.WEB ? View.GONE : View.VISIBLE);
+            if (!isXray) {
+                xrayStatusCell.setVisibility(View.GONE);
+            }
+            if (!isAether && aetherStatusCell != null) {
+                aetherStatusCell.setVisibility(View.GONE);
+            }
+            shareCell.setVisibility(currentType == ProxySettings.Type.WEB || currentType == ProxySettings.Type.AETHER ? View.GONE : View.VISIBLE);
             typeCell[0].setChecked(currentType == ProxySettings.Type.SOCKS5, animated);
             typeCell[1].setChecked(currentType == ProxySettings.Type.MTPROTO, animated);
             typeCell[2].setChecked(currentType == ProxySettings.Type.WEB, animated);
             typeCell[3].setChecked(currentType == ProxySettings.Type.XRAY_VLESS, animated);
+            typeCell[4].setChecked(currentType == ProxySettings.Type.AETHER, animated);
             checkShareDone(animated);
         }
     }
