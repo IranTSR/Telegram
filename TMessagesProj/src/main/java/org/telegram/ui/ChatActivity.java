@@ -1247,6 +1247,7 @@ public class ChatActivity extends BaseFragment implements
 
     public final static int OPTION_VIEW_STATISTICS = 115;
     public final static int OPTION_WELCOME_REVERT = 116;
+    public final static int OPTION_DELETE_FROM_DEVICE = 117;
 
     private final static int[] allowedNotificationsDuringChatListAnimations = new int[]{
             NotificationCenter.messagesRead,
@@ -33604,6 +33605,44 @@ public class ChatActivity extends BaseFragment implements
                 BulletinFactory.createSaveToGalleryBulletin(this, selectedObject.isVideo() && !selectedObject.isLivePhoto(), selectedObject.isLivePhoto(), themeDelegate).show();
                 break;
             }
+            case OPTION_DELETE_FROM_DEVICE: {
+                ArrayList<File> filesToDelete = new ArrayList<>();
+                String path = selectedObject.messageOwner.attachPath;
+                if (path != null && path.length() > 0) {
+                    File temp = new File(path);
+                    if (temp.exists() && !filesToDelete.contains(temp)) {
+                        filesToDelete.add(temp);
+                    }
+                }
+                File f = FileLoader.getInstance(currentAccount).getPathToMessage(selectedObject.messageOwner);
+                if (f != null && f.exists() && !filesToDelete.contains(f)) {
+                    filesToDelete.add(f);
+                }
+                f = FileLoader.getInstance(currentAccount).getPathToMessage(selectedObject.messageOwner, true, true);
+                if (f != null && f.exists() && !filesToDelete.contains(f)) {
+                    filesToDelete.add(f);
+                }
+                if (selectedObject.cachedQuality != null && selectedObject.cachedQuality.isCached()) {
+                    File qf = new File(selectedObject.cachedQuality.uri.getPath());
+                    if (qf.exists() && !filesToDelete.contains(qf)) {
+                        filesToDelete.add(qf);
+                    }
+                }
+                if (selectedObject.qualityToSave != null) {
+                    File qf = FileLoader.getInstance(currentAccount).getPathToAttach(selectedObject.qualityToSave, null, false, true);
+                    if (qf != null && qf.exists() && !filesToDelete.contains(qf)) {
+                        filesToDelete.add(qf);
+                    }
+                }
+                for (int i = 0; i < filesToDelete.size(); i++) {
+                    filesToDelete.get(i).delete();
+                }
+                selectedObject.mediaExists = false;
+                if (chatAdapter != null) {
+                    chatAdapter.notifyDataSetChanged(true);
+                }
+                break;
+            }
             case OPTION_REPLY: {
                 if (selectedObject != null && selectedObject.messageOwner != null && selectedObject.messageOwner.noforwards) {
                     return;
@@ -46132,6 +46171,12 @@ public class ChatActivity extends BaseFragment implements
                         options.add(OPTION_DELETE_STICKER_FROM_FAVORITES);
                         icons.add(R.drawable.msg_unfave);
                     }
+                }
+
+                if (selectedObject != null && selectedObject.mediaExists() && (type == 4 || type == 5 || type == 6 || type == 10 || (type == 2 && (selectedObject.isVoice() || selectedObject.isRoundVideo())))) {
+                    items.add("حذف فایل از حافظه");
+                    options.add(OPTION_DELETE_FROM_DEVICE);
+                    icons.add(R.drawable.msg_delete);
                 }
 
                 final boolean canForward = !selectedObject.isSponsored()
