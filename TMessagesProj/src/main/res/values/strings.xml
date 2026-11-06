@@ -2747,6 +2747,16 @@
     <string name="UseProxyAetherQuickReconnect">Quick reconnect</string>
     <string name="UseProxyAetherPeers">Extra peers (one ip:port per line, optional)</string>
     <string name="UseProxyAetherName">Profile name (optional)</string>
+    <string name="UseProxyAetherApiAddress">WARP API address (optional, e.g. 162.159.137.105)</string>
+    <string name="UseProxyAetherApiHost">WARP API host (optional)</string>
+    <string name="UseProxyAetherApiSni">WARP API SNI (optional)</string>
+    <string name="UseProxyAetherMasqueSni">MASQUE SNI (optional, default www.cloudflare.com)</string>
+    <string name="UseProxyAetherTls13Ciphers">TLS 1.3 ciphers (optional, : separated)</string>
+    <string name="UseProxyAetherTlsKeyShares">TLS key shares (optional, : separated)</string>
+    <string name="UseProxyAetherTlsSigalgs">TLS signature algorithms (optional, : separated)</string>
+    <string name="UseProxyAetherTlsCertCompression">TLS cert compression</string>
+    <string name="UseProxyAetherTlsAlps">TLS ALPS</string>
+    <string name="UseProxyAetherGreaseSigalgs">GREASE signature algorithms</string>
     <string name="AetherProxy">Aether Proxy</string>
     <string name="AetherProxyRunning">Aether proxy is running</string>
     <string name="AetherProxyStarting">Starting Aether proxy...</string>

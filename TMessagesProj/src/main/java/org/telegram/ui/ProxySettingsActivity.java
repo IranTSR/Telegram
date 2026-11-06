@@ -118,10 +118,24 @@ public class ProxySettingsActivity extends BaseFragment {
     private final static int FIELD_AETHER_QUICK_RECONNECT = 32;
     private final static int FIELD_AETHER_PEERS = 33;
     private final static int FIELD_AETHER_NAME = 34;
-    private final static int FIELD_COUNT = 35;
+    private final static int FIELD_AETHER_API_ADDRESS = 35;
+    private final static int FIELD_AETHER_API_HOST = 36;
+    private final static int FIELD_AETHER_API_SNI = 37;
+    private final static int FIELD_AETHER_MASQUE_SNI = 38;
+    private final static int FIELD_AETHER_TLS13_CIPHERS = 39;
+    private final static int FIELD_AETHER_TLS_KEY_SHARES = 40;
+    private final static int FIELD_AETHER_TLS_SIGALGS = 41;
+    private final static int FIELD_AETHER_TLS_CERT_COMPRESSION = 42;
+    private final static int FIELD_AETHER_TLS_ALPS = 43;
+    private final static int FIELD_AETHER_GREASE_SIGALGS = 44;
+    private final static int FIELD_COUNT = 45;
 
-    private static final String[] AETHER_PROTOCOL_LABELS = {"MASQUE", "WireGuard", "gool", "mim"};
-    private static final String[] AETHER_PROTOCOL_VALUES = {"masque", "wg", "gool", "mim"};
+    private static final String[] AETHER_PROTOCOL_LABELS = {"MASQUE", "WireGuard", "gool", "gool-classic", "mim"};
+    private static final String[] AETHER_PROTOCOL_VALUES = {"masque", "wg", "gool", "gool-classic", "mim"};
+    private static final String[] AETHER_TLS_CERT_COMPRESSION_LABELS = {"Default", "brotli", "zlib:brotli:zstd"};
+    private static final String[] AETHER_TLS_CERT_COMPRESSION_VALUES = {"", "brotli", "zlib:brotli:zstd"};
+    private static final String[] AETHER_TLS_ALPS_LABELS = {"Default", "new", "old"};
+    private static final String[] AETHER_TLS_ALPS_VALUES = {"", "new", "old"};
     private static final String[] AETHER_SCAN_LABELS = {"Turbo", "Balanced", "Thorough", "Verified", "Ironclad"};
     private static final String[] AETHER_SCAN_VALUES = {"turbo", "balanced", "thorough", "verified", "ironclad"};
     private static final String[] AETHER_IP_LABELS = {"IPv4", "IPv6", "Dual"};
@@ -326,6 +340,16 @@ public class ProxySettingsActivity extends BaseFragment {
                         currentProxyInfo.aetherQuickReconnect = "1".equals(aetherFieldValue(FIELD_AETHER_QUICK_RECONNECT, AETHER_BOOL_LABELS, AETHER_BOOL_VALUES));
                         currentProxyInfo.aetherPeers = inputFields[FIELD_AETHER_PEERS].getText().toString();
                         currentProxyInfo.proxyName = inputFields[FIELD_AETHER_NAME].getText().toString();
+                        currentProxyInfo.aetherApiAddress = inputFields[FIELD_AETHER_API_ADDRESS].getText().toString();
+                        currentProxyInfo.aetherApiHost = inputFields[FIELD_AETHER_API_HOST].getText().toString();
+                        currentProxyInfo.aetherApiSni = inputFields[FIELD_AETHER_API_SNI].getText().toString();
+                        currentProxyInfo.aetherMasqueSni = inputFields[FIELD_AETHER_MASQUE_SNI].getText().toString();
+                        currentProxyInfo.aetherTls13Ciphers = inputFields[FIELD_AETHER_TLS13_CIPHERS].getText().toString();
+                        currentProxyInfo.aetherTlsKeyShares = inputFields[FIELD_AETHER_TLS_KEY_SHARES].getText().toString();
+                        currentProxyInfo.aetherTlsSigalgs = inputFields[FIELD_AETHER_TLS_SIGALGS].getText().toString();
+                        currentProxyInfo.aetherTlsCertCompression = aetherFieldValue(FIELD_AETHER_TLS_CERT_COMPRESSION, AETHER_TLS_CERT_COMPRESSION_LABELS, AETHER_TLS_CERT_COMPRESSION_VALUES);
+                        currentProxyInfo.aetherTlsAlps = aetherFieldValue(FIELD_AETHER_TLS_ALPS, AETHER_TLS_ALPS_LABELS, AETHER_TLS_ALPS_VALUES);
+                        currentProxyInfo.aetherGreaseSigalgs = "1".equals(aetherFieldValue(FIELD_AETHER_GREASE_SIGALGS, AETHER_BOOL_LABELS, AETHER_BOOL_VALUES));
                         currentProxyInfo.normalizeAetherFields();
                     }
 
@@ -705,6 +729,49 @@ public class ProxySettingsActivity extends BaseFragment {
                 case FIELD_AETHER_NAME:
                     inputFields[a].setHintText(LocaleController.getString(R.string.UseProxyAetherName));
                     inputFields[a].setText(currentProxyInfo.proxyName);
+                    break;
+                case FIELD_AETHER_API_ADDRESS:
+                    inputFields[a].setHintText(LocaleController.getString(R.string.UseProxyAetherApiAddress));
+                    inputFields[a].setText(currentProxyInfo.aetherApiAddress);
+                    break;
+                case FIELD_AETHER_API_HOST:
+                    inputFields[a].setHintText(LocaleController.getString(R.string.UseProxyAetherApiHost));
+                    inputFields[a].setText(currentProxyInfo.aetherApiHost);
+                    break;
+                case FIELD_AETHER_API_SNI:
+                    inputFields[a].setHintText(LocaleController.getString(R.string.UseProxyAetherApiSni));
+                    inputFields[a].setText(currentProxyInfo.aetherApiSni);
+                    break;
+                case FIELD_AETHER_MASQUE_SNI:
+                    inputFields[a].setHintText(LocaleController.getString(R.string.UseProxyAetherMasqueSni));
+                    inputFields[a].setText(currentProxyInfo.aetherMasqueSni);
+                    break;
+                case FIELD_AETHER_TLS13_CIPHERS:
+                    inputFields[a].setHintText(LocaleController.getString(R.string.UseProxyAetherTls13Ciphers));
+                    inputFields[a].setText(currentProxyInfo.aetherTls13Ciphers);
+                    break;
+                case FIELD_AETHER_TLS_KEY_SHARES:
+                    inputFields[a].setHintText(LocaleController.getString(R.string.UseProxyAetherTlsKeyShares));
+                    inputFields[a].setText(currentProxyInfo.aetherTlsKeyShares);
+                    break;
+                case FIELD_AETHER_TLS_SIGALGS:
+                    inputFields[a].setHintText(LocaleController.getString(R.string.UseProxyAetherTlsSigalgs));
+                    inputFields[a].setText(currentProxyInfo.aetherTlsSigalgs);
+                    break;
+                case FIELD_AETHER_TLS_CERT_COMPRESSION:
+                    inputFields[a].setHintText(LocaleController.getString(R.string.UseProxyAetherTlsCertCompression));
+                    inputFields[a].setText(aetherFieldLabel(currentProxyInfo.aetherTlsCertCompression, AETHER_TLS_CERT_COMPRESSION_LABELS, AETHER_TLS_CERT_COMPRESSION_VALUES));
+                    setupAetherDropdown(a, LocaleController.getString(R.string.UseProxyAetherTlsCertCompression), AETHER_TLS_CERT_COMPRESSION_LABELS, AETHER_TLS_CERT_COMPRESSION_VALUES);
+                    break;
+                case FIELD_AETHER_TLS_ALPS:
+                    inputFields[a].setHintText(LocaleController.getString(R.string.UseProxyAetherTlsAlps));
+                    inputFields[a].setText(aetherFieldLabel(currentProxyInfo.aetherTlsAlps, AETHER_TLS_ALPS_LABELS, AETHER_TLS_ALPS_VALUES));
+                    setupAetherDropdown(a, LocaleController.getString(R.string.UseProxyAetherTlsAlps), AETHER_TLS_ALPS_LABELS, AETHER_TLS_ALPS_VALUES);
+                    break;
+                case FIELD_AETHER_GREASE_SIGALGS:
+                    inputFields[a].setHintText(LocaleController.getString(R.string.UseProxyAetherGreaseSigalgs));
+                    inputFields[a].setText(aetherFieldLabel(currentProxyInfo.aetherGreaseSigalgs ? "1" : "", AETHER_BOOL_LABELS, AETHER_BOOL_VALUES));
+                    setupAetherDropdown(a, LocaleController.getString(R.string.UseProxyAetherGreaseSigalgs), AETHER_BOOL_LABELS, AETHER_BOOL_VALUES);
                     break;
             }
             inputFields[a].setSelection(inputFields[a].length());
@@ -1349,7 +1416,7 @@ public class ProxySettingsActivity extends BaseFragment {
             for (int f = FIELD_VLESS_ID; f <= FIELD_VLESS_ADVANCED_JSON; f++) {
                 ((View) inputFields[f].getParent()).setVisibility(isXray ? View.VISIBLE : View.GONE);
             }
-            for (int f = FIELD_AETHER_PROTOCOL; f <= FIELD_AETHER_NAME; f++) {
+            for (int f = FIELD_AETHER_PROTOCOL; f <= FIELD_AETHER_GREASE_SIGALGS; f++) {
                 ((View) inputFields[f].getParent()).setVisibility(isAether ? View.VISIBLE : View.GONE);
             }
             if (!isXray && !isAether) {

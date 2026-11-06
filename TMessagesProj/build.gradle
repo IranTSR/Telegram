@@ -225,12 +225,14 @@ def prepareXrayCore = tasks.register("prepareXrayCore") {
     }
 }
 
-def aetherVersion = "v2.1.0"
+def aetherVersion = "v2.4.0"
 // Official Aether android assets only exist for arm64-v8a, armeabi-v7a and
 // x86_64. x86 has no official asset: it can be supplied as a prebuilt via
 // AETHER_PREBUILT_DIR/x86/libaether.so (see the CI workflow). Without it,
 // libaether.so is skipped for x86 and the app transparently disables Aether
 // on x86 devices.
+// NOTE: Aether v2.4.0 Android builds need Android 10 (API 29) or later;
+// AetherProxyManager.isSupportedDevice() hides the Aether option below API 29.
 def aetherAssetMap = [
     "arm64-v8a": "aether-android-arm64.tar.gz",
     "armeabi-v7a": "aether-android-armv7.tar.gz",

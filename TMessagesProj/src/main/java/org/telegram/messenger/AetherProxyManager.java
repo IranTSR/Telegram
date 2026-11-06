@@ -29,7 +29,7 @@ import java.util.zip.GZIPInputStream;
 public class AetherProxyManager {
     public static final String LOCAL_ADDRESS = "127.0.0.1";
     private static final int DEFAULT_SOCKS_PORT = 1819;
-    private static final String DEFAULT_AETHER_VERSION = "v2.1.0";
+    private static final String DEFAULT_AETHER_VERSION = "v2.4.0";
     public static final int STATE_IDLE = 0;
     public static final int STATE_DOWNLOADING = 1;
     public static final int STATE_STARTING = 2;
@@ -193,6 +193,10 @@ public class AetherProxyManager {
             if (BuildVars.LOGS_ENABLED) {
                 FileLog.d("Aether: ensureRunning protocol=" + info.aetherProtocol + " scan=" + info.aetherScan);
             }
+            if (!isSupportedDevice()) {
+                markFailed("Aether 2.4.0 needs Android 10 (API 29+) or an x86_64/arm device");
+                return;
+            }
             markStarting();
             File aetherDir = ApplicationLoader.getFilesDirFixed("aether");
             if (aetherDir == null) {
@@ -270,6 +274,10 @@ public class AetherProxyManager {
         String protocol = TextUtils.isEmpty(info.aetherProtocol) ? "masque" : info.aetherProtocol.toLowerCase(Locale.US);
         if ("wg".equals(protocol) || "wireguard".equals(protocol)) {
             argv.add("--wg");
+        } else if ("gool-classic".equals(protocol) || "wiw".equals(protocol) || "warp-in-warp".equals(protocol)) {
+            // v2.4.0: --gool now runs the MASQUE gool (WireGuard inside MASQUE);
+            // the classic WireGuard-in-WireGuard gool moved to --gool-classic.
+            argv.add("--gool-classic");
         } else if ("gool".equals(protocol)) {
             argv.add("--gool");
         } else if ("mim".equals(protocol)) {
@@ -322,6 +330,51 @@ public class AetherProxyManager {
                     argv.add(peer);
                 }
             }
+        }
+
+        // v2.4.0 WARP API options: --enroll-address was renamed to --api-address
+        // (and --no-fragment / --api-fragment were removed; --fragment now also
+        // splits the WARP API calls, so no separate flag is needed).
+        if (!TextUtils.isEmpty(info.aetherApiAddress)) {
+            argv.add("--api-address");
+            argv.add(info.aetherApiAddress.trim());
+        }
+        if (!TextUtils.isEmpty(info.aetherApiHost)) {
+            argv.add("--api-host");
+            argv.add(info.aetherApiHost.trim());
+        }
+        if (!TextUtils.isEmpty(info.aetherApiSni)) {
+            argv.add("--api-sni");
+            argv.add(info.aetherApiSni.trim());
+        }
+        // v2.4.0: MASQUE SNI defaults to www.cloudflare.com; override it here.
+        if (!TextUtils.isEmpty(info.aetherMasqueSni)) {
+            argv.add("--masque-sni");
+            argv.add(info.aetherMasqueSni.trim());
+        }
+        // v2.4.0 TLS fingerprint options.
+        if (!TextUtils.isEmpty(info.aetherTls13Ciphers)) {
+            argv.add("--tls13-ciphers");
+            argv.add(info.aetherTls13Ciphers.trim());
+        }
+        if (!TextUtils.isEmpty(info.aetherTlsKeyShares)) {
+            argv.add("--tls-key-shares");
+            argv.add(info.aetherTlsKeyShares.trim());
+        }
+        if (!TextUtils.isEmpty(info.aetherTlsSigalgs)) {
+            argv.add("--tls-sigalgs");
+            argv.add(info.aetherTlsSigalgs.trim());
+        }
+        if (!TextUtils.isEmpty(info.aetherTlsCertCompression)) {
+            argv.add("--tls-cert-compression");
+            argv.add(info.aetherTlsCertCompression.trim());
+        }
+        if (!TextUtils.isEmpty(info.aetherTlsAlps)) {
+            argv.add("--tls-alps");
+            argv.add(info.aetherTlsAlps.trim());
+        }
+        if (info.aetherGreaseSigalgs) {
+            argv.add("--enable-grease-sigalgs");
         }
         return argv;
     }
@@ -528,6 +581,10 @@ public class AetherProxyManager {
     }
 
     public static boolean isSupportedDevice() {
+        // Aether v2.4.0 Android builds need Android 10 (API 29) or later.
+        if (Build.VERSION.SDK_INT < 29) {
+            return false;
+        }
         return getAssetNameForDevice() != null;
     }
 

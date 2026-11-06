@@ -64,7 +64,8 @@ public class SharedConfig {
     private final static int PROXY_SCHEMA_V3 = 3;
     private final static int PROXY_SCHEMA_V4 = 4;
     private final static int PROXY_SCHEMA_V5 = 5;
-    private final static int PROXY_CURRENT_SCHEMA_VERSION = PROXY_SCHEMA_V5;
+    private final static int PROXY_SCHEMA_V6 = 6;
+    private final static int PROXY_CURRENT_SCHEMA_VERSION = PROXY_SCHEMA_V6;
 
     public final static int PASSCODE_TYPE_PIN = 0,
             PASSCODE_TYPE_PASSWORD = 1;
@@ -423,6 +424,17 @@ public class SharedConfig {
         public String aetherNoize;
         public boolean aetherQuickReconnect = true;
         public String aetherPeers;
+        // Aether v2.4.0 fields (schema V6, appended after aetherPeers).
+        public String aetherApiAddress;
+        public String aetherApiHost;
+        public String aetherApiSni;
+        public String aetherMasqueSni;
+        public String aetherTls13Ciphers;
+        public String aetherTlsKeyShares;
+        public String aetherTlsSigalgs;
+        public String aetherTlsCertCompression;
+        public String aetherTlsAlps;
+        public boolean aetherGreaseSigalgs;
 
         public ProxyInfo(@NonNull ProxySettings proxySettings) {
             settings = proxySettings;
@@ -517,6 +529,33 @@ public class SharedConfig {
             }
             if (this.aetherPeers == null) {
                 this.aetherPeers = "";
+            }
+            if (this.aetherApiAddress == null) {
+                this.aetherApiAddress = "";
+            }
+            if (this.aetherApiHost == null) {
+                this.aetherApiHost = "";
+            }
+            if (this.aetherApiSni == null) {
+                this.aetherApiSni = "";
+            }
+            if (this.aetherMasqueSni == null) {
+                this.aetherMasqueSni = "";
+            }
+            if (this.aetherTls13Ciphers == null) {
+                this.aetherTls13Ciphers = "";
+            }
+            if (this.aetherTlsKeyShares == null) {
+                this.aetherTlsKeyShares = "";
+            }
+            if (this.aetherTlsSigalgs == null) {
+                this.aetherTlsSigalgs = "";
+            }
+            if (this.aetherTlsCertCompression == null) {
+                this.aetherTlsCertCompression = "";
+            }
+            if (this.aetherTlsAlps == null) {
+                this.aetherTlsAlps = "";
             }
         }
 
@@ -756,6 +795,20 @@ public class SharedConfig {
                 info.normalizeAetherFields();
             }
 
+            if (version >= PROXY_SCHEMA_V6) {
+                info.aetherApiAddress = data.readString(false);
+                info.aetherApiHost = data.readString(false);
+                info.aetherApiSni = data.readString(false);
+                info.aetherMasqueSni = data.readString(false);
+                info.aetherTls13Ciphers = data.readString(false);
+                info.aetherTlsKeyShares = data.readString(false);
+                info.aetherTlsSigalgs = data.readString(false);
+                info.aetherTlsCertCompression = data.readString(false);
+                info.aetherTlsAlps = data.readString(false);
+                info.aetherGreaseSigalgs = data.readBool(false);
+                info.normalizeAetherFields();
+            }
+
             return info;
         }
 
@@ -802,6 +855,17 @@ public class SharedConfig {
             data.writeString(aetherNoize);
             data.writeBool(aetherQuickReconnect);
             data.writeString(aetherPeers);
+            // Schema V6 fields, in the same order as fromSerializedData reads them.
+            data.writeString(aetherApiAddress != null ? aetherApiAddress : "");
+            data.writeString(aetherApiHost != null ? aetherApiHost : "");
+            data.writeString(aetherApiSni != null ? aetherApiSni : "");
+            data.writeString(aetherMasqueSni != null ? aetherMasqueSni : "");
+            data.writeString(aetherTls13Ciphers != null ? aetherTls13Ciphers : "");
+            data.writeString(aetherTlsKeyShares != null ? aetherTlsKeyShares : "");
+            data.writeString(aetherTlsSigalgs != null ? aetherTlsSigalgs : "");
+            data.writeString(aetherTlsCertCompression != null ? aetherTlsCertCompression : "");
+            data.writeString(aetherTlsAlps != null ? aetherTlsAlps : "");
+            data.writeBool(aetherGreaseSigalgs);
         }
     }
 
@@ -1812,7 +1876,7 @@ public class SharedConfig {
             if (count == -1) { // V2 or newer
                 int version = data.readByte(false);
 
-                if (version == PROXY_SCHEMA_V2 || version == PROXY_SCHEMA_V3 || version == PROXY_SCHEMA_V4 || version == PROXY_SCHEMA_V5) {
+                if (version == PROXY_SCHEMA_V2 || version == PROXY_SCHEMA_V3 || version == PROXY_SCHEMA_V4 || version == PROXY_SCHEMA_V5 || version == PROXY_SCHEMA_V6) {
                     count = data.readInt32(false);
 
                     for (int i = 0; i < count; i++) {
@@ -1954,7 +2018,17 @@ public class SharedConfig {
                     && a.aetherFragment == b.aetherFragment
                     && TextUtils.equals(a.aetherNoize, b.aetherNoize)
                     && a.aetherQuickReconnect == b.aetherQuickReconnect
-                    && TextUtils.equals(a.aetherPeers, b.aetherPeers);
+                    && TextUtils.equals(a.aetherPeers, b.aetherPeers)
+                    && TextUtils.equals(a.aetherApiAddress, b.aetherApiAddress)
+                    && TextUtils.equals(a.aetherApiHost, b.aetherApiHost)
+                    && TextUtils.equals(a.aetherApiSni, b.aetherApiSni)
+                    && TextUtils.equals(a.aetherMasqueSni, b.aetherMasqueSni)
+                    && TextUtils.equals(a.aetherTls13Ciphers, b.aetherTls13Ciphers)
+                    && TextUtils.equals(a.aetherTlsKeyShares, b.aetherTlsKeyShares)
+                    && TextUtils.equals(a.aetherTlsSigalgs, b.aetherTlsSigalgs)
+                    && TextUtils.equals(a.aetherTlsCertCompression, b.aetherTlsCertCompression)
+                    && TextUtils.equals(a.aetherTlsAlps, b.aetherTlsAlps)
+                    && a.aetherGreaseSigalgs == b.aetherGreaseSigalgs;
         }
         return true;
     }
