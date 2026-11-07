@@ -71,8 +71,8 @@ jobs:
           mkdir -p "$GITHUB_WORKSPACE/xray-prebuilt/armeabi-v7a" "$GITHUB_WORKSPACE/xray-prebuilt/x86"
           LLVM_BIN="$ANDROID_NDK_HOME/toolchains/llvm/prebuilt/linux-x86_64/bin"
           cd /tmp/xray-src
-          CC="$LLVM_BIN/armv7a-linux-androideabi21-clang" CGO_ENABLED=1 GOOS=android GOARCH=arm GOARM=7 go build -trimpath -ldflags="-s -w" -o "$GITHUB_WORKSPACE/xray-prebuilt/armeabi-v7a/libxray.so" ./main
-          CC="$LLVM_BIN/i686-linux-android21-clang" CGO_ENABLED=1 GOOS=android GOARCH=386 go build -trimpath -ldflags="-s -w" -o "$GITHUB_WORKSPACE/xray-prebuilt/x86/libxray.so" ./main
+          CC="$LLVM_BIN/armv7a-linux-androideabi21-clang" CGO_ENABLED=1 GOOS=android GOARCH=arm GOARM=7 go build -trimpath -ldflags="-s -w -checklinkname=0" -o "$GITHUB_WORKSPACE/xray-prebuilt/armeabi-v7a/libxray.so" ./main
+          CC="$LLVM_BIN/i686-linux-android21-clang" CGO_ENABLED=1 GOOS=android GOARCH=386 go build -trimpath -ldflags="-s -w -checklinkname=0" -o "$GITHUB_WORKSPACE/xray-prebuilt/x86/libxray.so" ./main
           file "$GITHUB_WORKSPACE/xray-prebuilt/armeabi-v7a/libxray.so" "$GITHUB_WORKSPACE/xray-prebuilt/x86/libxray.so"
           echo "XRAY_PREBUILT_DIR=$GITHUB_WORKSPACE/xray-prebuilt" >> $GITHUB_ENV
 
