@@ -13,7 +13,7 @@ permissions:
 
 env:
   APP_VERSION_NAME: "13.1.1"
-  RELEASE_TAG: "v13.1.1-xray1"
+  RELEASE_TAG: "v13.1.1-xray2"
 
 jobs:
   build:
