@@ -332,7 +332,12 @@ public class ProxyUtil {
                     line.startsWith("tg://socks") ||
                     line.startsWith("https://t.me/proxy") ||
                     line.startsWith("https://t.me/socks") ||
-                    line.startsWith("vless://")) {
+                    line.startsWith("vless://") ||
+                    line.startsWith("ss://") ||
+                    line.startsWith("vmess://") ||
+                    line.startsWith("trojan://") ||
+                    line.startsWith("hy2://") ||
+                    line.startsWith("hysteria2://")) {
                 try {
                     proxies.add(SharedConfig.ProxyInfo.fromUrl(line));
                 } catch (Throwable e) {
@@ -341,6 +346,15 @@ public class ProxyUtil {
                 }
             }
         };
+
+        // WireGuard .conf text block (pasted or inside a subscription file).
+        if (text != null && SharedConfig.ProxyInfo.isWireguardConfText(text)) {
+            try {
+                proxies.add(SharedConfig.ProxyInfo.fromWireguardConf(text));
+            } catch (Throwable e) {
+                error[0] = true;
+            }
+        }
 
         if (text != null) {
             String trimmed = text.trim();
@@ -356,7 +370,7 @@ public class ProxyUtil {
         }
 
         if (text != null) {
-            if (text.trim().startsWith("[") || text.trim().startsWith("{") || text.contains("\"outbounds\"") || text.contains("\"vless\"")) {
+            if (text.trim().startsWith("[") || text.trim().startsWith("{") || text.contains("\"outbounds\"") || text.contains("\"vless\"") || text.contains("\"vmess\"") || text.contains("\"trojan\"") || text.contains("\"shadowsocks\"") || text.contains("\"wireguard\"") || text.contains("\"hysteria\"")) {
                 proxies.addAll(parseXrayJson(text));
             }
         }
@@ -450,6 +464,7 @@ public class ProxyUtil {
         if (outbounds == null || outbounds.length() == 0) {
             return null;
         }
+        // Prefer the outbound tagged "proxy", else the first known proxy protocol.
         JSONObject outbound = null;
         for (int i = 0; i < outbounds.length(); i++) {
             JSONObject candidate = outbounds.optJSONObject(i);
@@ -457,20 +472,137 @@ public class ProxyUtil {
                 continue;
             }
             String protocol = candidate.optString("protocol", "");
-            if ("vless".equalsIgnoreCase(protocol)) {
-                if ("proxy".equalsIgnoreCase(candidate.optString("tag", ""))) {
-                    outbound = candidate;
-                    break;
-                }
-                if (outbound == null) {
-                    outbound = candidate;
-                }
+            if (!isKnownProxyProtocol(protocol)) {
+                continue;
+            }
+            if ("proxy".equalsIgnoreCase(candidate.optString("tag", ""))) {
+                outbound = candidate;
+                break;
+            }
+            if (outbound == null) {
+                outbound = candidate;
             }
         }
         if (outbound == null) {
             return null;
         }
+        String protocol = outbound.optString("protocol", "").toLowerCase(Locale.US);
         JSONObject settings = outbound.optJSONObject("settings");
+        JSONObject stream = outbound.optJSONObject("streamSettings");
+        String remarks = config.optString("remarks", "");
+        switch (protocol) {
+            case "vless":
+                return parseXrayVless(outbound, settings, stream, remarks);
+            case "vmess":
+                return parseXrayVmess(outbound, settings, stream, remarks);
+            case "trojan":
+                return parseXrayTrojan(outbound, settings, stream, remarks);
+            case "shadowsocks":
+                return parseXrayShadowsocks(outbound, settings, remarks);
+            case "wireguard":
+                return parseXrayWireguard(outbound, settings, remarks);
+            case "hysteria":
+                return parseXrayHysteria(outbound, settings, stream, remarks);
+            default:
+                return null;
+        }
+    }
+
+    private static boolean isKnownProxyProtocol(String protocol) {
+        if (protocol == null) {
+            return false;
+        }
+        switch (protocol.toLowerCase(Locale.US)) {
+            case "vless":
+            case "vmess":
+            case "trojan":
+            case "shadowsocks":
+            case "wireguard":
+            case "hysteria":
+                return true;
+            default:
+                return false;
+        }
+    }
+
+    /** Shared transport/TLS fields (network, security, SNI, ws/grpc/...) into the vless* fields. */
+    private static void fillXrayStreamFields(SharedConfig.ProxyInfo info, JSONObject stream) {
+        if (stream == null) {
+            return;
+        }
+        info.vlessType = stream.optString("network", info.vlessType);
+        info.vlessSecurity = stream.optString("security", info.vlessSecurity);
+        JSONObject tls = stream.optJSONObject("tlsSettings");
+        if (tls != null) {
+            info.vlessSni = tls.optString("serverName", info.vlessSni);
+            info.vlessFp = tls.optString("fingerprint", info.vlessFp);
+            JSONArray alpn = tls.optJSONArray("alpn");
+            if (alpn != null && alpn.length() > 0) {
+                StringBuilder sb = new StringBuilder();
+                for (int i = 0; i < alpn.length(); i++) {
+                    if (i > 0) sb.append(",");
+                    sb.append(alpn.optString(i));
+                }
+                info.vlessAlpn = sb.toString();
+            }
+            info.vlessAllowInsecure = tls.optBoolean("allowInsecure", info.vlessAllowInsecure);
+        }
+        JSONObject reality = stream.optJSONObject("realitySettings");
+        if (reality != null) {
+            info.vlessSni = reality.optString("serverName", info.vlessSni);
+            info.vlessFp = reality.optString("fingerprint", info.vlessFp);
+            info.vlessPublicKey = reality.optString("publicKey", info.vlessPublicKey);
+            info.vlessShortId = reality.optString("shortId", info.vlessShortId);
+            info.vlessSpiderX = reality.optString("spiderX", info.vlessSpiderX);
+        }
+        JSONObject ws = stream.optJSONObject("wsSettings");
+        if (ws != null) {
+            info.vlessPath = ws.optString("path", info.vlessPath);
+            JSONObject headers = ws.optJSONObject("headers");
+            if (headers != null) {
+                info.vlessHost = headers.optString("Host", info.vlessHost);
+            }
+        }
+        JSONObject grpc = stream.optJSONObject("grpcSettings");
+        if (grpc != null) {
+            info.vlessServiceName = grpc.optString("serviceName", info.vlessServiceName);
+            if (grpc.optBoolean("multiMode", false)) {
+                info.vlessMode = "multi";
+            }
+        }
+        JSONObject http = stream.optJSONObject("httpSettings");
+        if (http != null) {
+            info.vlessPath = http.optString("path", info.vlessPath);
+            JSONArray host = http.optJSONArray("host");
+            if (host != null && host.length() > 0) {
+                StringBuilder sb = new StringBuilder();
+                for (int i = 0; i < host.length(); i++) {
+                    if (i > 0) sb.append(",");
+                    sb.append(host.optString(i));
+                }
+                info.vlessHost = sb.toString();
+            }
+        }
+        JSONObject kcp = stream.optJSONObject("kcpSettings");
+        if (kcp != null) {
+            info.vlessSeed = kcp.optString("seed", info.vlessSeed);
+            JSONObject header = kcp.optJSONObject("header");
+            if (header != null) {
+                info.vlessHeaderType = header.optString("type", info.vlessHeaderType);
+            }
+        }
+        JSONObject quic = stream.optJSONObject("quicSettings");
+        if (quic != null) {
+            info.vlessQuicSecurity = quic.optString("security", info.vlessQuicSecurity);
+            info.vlessQuicKey = quic.optString("key", info.vlessQuicKey);
+            JSONObject header = quic.optJSONObject("header");
+            if (header != null) {
+                info.vlessHeaderType = header.optString("type", info.vlessHeaderType);
+            }
+        }
+    }
+
+    private static SharedConfig.ProxyInfo parseXrayVless(JSONObject outbound, JSONObject settings, JSONObject stream, String remarks) {
         JSONArray vnext = settings != null ? settings.optJSONArray("vnext") : null;
         JSONObject server = vnext != null && vnext.length() > 0 ? vnext.optJSONObject(0) : null;
         if (server == null) {
@@ -493,91 +625,217 @@ public class ProxyUtil {
         info.vlessId = user.optString("id", "");
         info.vlessEncryption = user.optString("encryption", "none");
         info.vlessFlow = user.optString("flow", "");
-        String remarks = config.optString("remarks", "");
         if (!TextUtils.isEmpty(remarks)) {
             info.vlessRemark = remarks;
         }
+        fillXrayStreamFields(info, stream);
+        return info;
+    }
 
-        JSONObject stream = outbound.optJSONObject("streamSettings");
-        if (stream != null) {
-            info.vlessType = stream.optString("network", "");
-            info.vlessSecurity = stream.optString("security", "");
+    private static SharedConfig.ProxyInfo parseXrayVmess(JSONObject outbound, JSONObject settings, JSONObject stream, String remarks) {
+        JSONArray vnext = settings != null ? settings.optJSONArray("vnext") : null;
+        JSONObject server = vnext != null && vnext.length() > 0 ? vnext.optJSONObject(0) : null;
+        if (server == null) {
+            return null;
+        }
+        String address = server.optString("address", "");
+        int port = server.optInt("port", 0);
+        JSONArray users = server.optJSONArray("users");
+        JSONObject user = users != null && users.length() > 0 ? users.optJSONObject(0) : null;
+        if (TextUtils.isEmpty(address) || port <= 0 || user == null) {
+            return null;
+        }
+        SharedConfig.ProxyInfo info = new SharedConfig.ProxyInfo(
+                ProxySettings.builder()
+                        .setType(ProxySettings.Type.XRAY_VMESS)
+                        .setAddress(address)
+                        .setPort(port)
+                        .build()
+        );
+        info.vmessId = user.optString("id", "");
+        info.vmessAlterId = String.valueOf(user.optInt("alterId", 0));
+        info.vmessSecurity = user.optString("security", "auto");
+        if (!TextUtils.isEmpty(remarks)) {
+            info.proxyName = remarks;
+        }
+        fillXrayStreamFields(info, stream);
+        info.normalizeXrayProtocolsFields();
+        return info;
+    }
 
-            JSONObject tls = stream.optJSONObject("tlsSettings");
-            if (tls != null) {
-                info.vlessSni = tls.optString("serverName", info.vlessSni);
-                info.vlessFp = tls.optString("fingerprint", info.vlessFp);
-                JSONArray alpn = tls.optJSONArray("alpn");
-                if (alpn != null && alpn.length() > 0) {
-                    StringBuilder sb = new StringBuilder();
-                    for (int i = 0; i < alpn.length(); i++) {
-                        if (i > 0) sb.append(",");
-                        sb.append(alpn.optString(i));
-                    }
-                    info.vlessAlpn = sb.toString();
-                }
-                info.vlessAllowInsecure = tls.optBoolean("allowInsecure", info.vlessAllowInsecure);
-            }
+    private static SharedConfig.ProxyInfo parseXrayTrojan(JSONObject outbound, JSONObject settings, JSONObject stream, String remarks) {
+        JSONArray servers = settings != null ? settings.optJSONArray("servers") : null;
+        JSONObject server = servers != null && servers.length() > 0 ? servers.optJSONObject(0) : null;
+        if (server == null) {
+            return null;
+        }
+        String address = server.optString("address", "");
+        int port = server.optInt("port", 0);
+        String password = server.optString("password", "");
+        if (TextUtils.isEmpty(address) || port <= 0 || TextUtils.isEmpty(password)) {
+            return null;
+        }
+        SharedConfig.ProxyInfo info = new SharedConfig.ProxyInfo(
+                ProxySettings.builder()
+                        .setType(ProxySettings.Type.XRAY_TROJAN)
+                        .setAddress(address)
+                        .setPort(port)
+                        .build()
+        );
+        info.trojanPassword = password;
+        if (!TextUtils.isEmpty(remarks)) {
+            info.proxyName = remarks;
+        }
+        fillXrayStreamFields(info, stream);
+        JSONObject tls = stream != null ? stream.optJSONObject("tlsSettings") : null;
+        if (tls != null) {
+            info.trojanSni = tls.optString("serverName", "");
+            info.trojanAllowInsecure = tls.optBoolean("allowInsecure", false);
+        }
+        info.normalizeXrayProtocolsFields();
+        return info;
+    }
 
-            JSONObject reality = stream.optJSONObject("realitySettings");
-            if (reality != null) {
-                info.vlessSni = reality.optString("serverName", info.vlessSni);
-                info.vlessFp = reality.optString("fingerprint", info.vlessFp);
-                info.vlessPublicKey = reality.optString("publicKey", info.vlessPublicKey);
-                info.vlessShortId = reality.optString("shortId", info.vlessShortId);
-                info.vlessSpiderX = reality.optString("spiderX", info.vlessSpiderX);
-            }
+    private static SharedConfig.ProxyInfo parseXrayShadowsocks(JSONObject outbound, JSONObject settings, String remarks) {
+        JSONArray servers = settings != null ? settings.optJSONArray("servers") : null;
+        JSONObject server = servers != null && servers.length() > 0 ? servers.optJSONObject(0) : null;
+        if (server == null) {
+            return null;
+        }
+        String address = server.optString("address", "");
+        int port = server.optInt("port", 0);
+        String password = server.optString("password", "");
+        if (TextUtils.isEmpty(address) || port <= 0 || TextUtils.isEmpty(password)) {
+            return null;
+        }
+        SharedConfig.ProxyInfo info = new SharedConfig.ProxyInfo(
+                ProxySettings.builder()
+                        .setType(ProxySettings.Type.XRAY_SHADOWSOCKS)
+                        .setAddress(address)
+                        .setPort(port)
+                        .build()
+        );
+        info.ssPassword = password;
+        info.ssMethod = server.optString("method", "aes-256-gcm");
+        if (!TextUtils.isEmpty(remarks)) {
+            info.proxyName = remarks;
+        }
+        info.normalizeXrayProtocolsFields();
+        return info;
+    }
 
-            JSONObject ws = stream.optJSONObject("wsSettings");
-            if (ws != null) {
-                info.vlessPath = ws.optString("path", info.vlessPath);
-                JSONObject headers = ws.optJSONObject("headers");
-                if (headers != null) {
-                    info.vlessHost = headers.optString("Host", info.vlessHost);
-                }
-            }
-
-            JSONObject grpc = stream.optJSONObject("grpcSettings");
-            if (grpc != null) {
-                info.vlessServiceName = grpc.optString("serviceName", info.vlessServiceName);
-                if (grpc.optBoolean("multiMode", false)) {
-                    info.vlessMode = "multi";
-                }
-            }
-
-            JSONObject http = stream.optJSONObject("httpSettings");
-            if (http != null) {
-                info.vlessPath = http.optString("path", info.vlessPath);
-                JSONArray host = http.optJSONArray("host");
-                if (host != null && host.length() > 0) {
-                    StringBuilder sb = new StringBuilder();
-                    for (int i = 0; i < host.length(); i++) {
-                        if (i > 0) sb.append(",");
-                        sb.append(host.optString(i));
-                    }
-                    info.vlessHost = sb.toString();
-                }
-            }
-
-            JSONObject kcp = stream.optJSONObject("kcpSettings");
-            if (kcp != null) {
-                info.vlessSeed = kcp.optString("seed", info.vlessSeed);
-                JSONObject header = kcp.optJSONObject("header");
-                if (header != null) {
-                    info.vlessHeaderType = header.optString("type", info.vlessHeaderType);
-                }
-            }
-
-            JSONObject quic = stream.optJSONObject("quicSettings");
-            if (quic != null) {
-                info.vlessQuicSecurity = quic.optString("security", info.vlessQuicSecurity);
-                info.vlessQuicKey = quic.optString("key", info.vlessQuicKey);
-                JSONObject header = quic.optJSONObject("header");
-                if (header != null) {
-                    info.vlessHeaderType = header.optString("type", info.vlessHeaderType);
-                }
+    private static SharedConfig.ProxyInfo parseXrayWireguard(JSONObject outbound, JSONObject settings, String remarks) {
+        if (settings == null) {
+            return null;
+        }
+        String secretKey = settings.optString("secretKey", "");
+        JSONArray peers = settings.optJSONArray("peers");
+        JSONObject peer = peers != null && peers.length() > 0 ? peers.optJSONObject(0) : null;
+        if (TextUtils.isEmpty(secretKey) || peer == null) {
+            return null;
+        }
+        String publicKey = peer.optString("publicKey", "");
+        String endpoint = peer.optString("endpoint", "");
+        if (TextUtils.isEmpty(publicKey) || TextUtils.isEmpty(endpoint)) {
+            return null;
+        }
+        String host = endpoint;
+        int port = 51820;
+        int colon = endpoint.lastIndexOf(':');
+        if (colon >= 0) {
+            host = endpoint.substring(0, colon).replace("[", "").replace("]", "");
+            try {
+                port = Integer.parseInt(endpoint.substring(colon + 1));
+            } catch (NumberFormatException ignored) {
             }
         }
+        SharedConfig.ProxyInfo info = new SharedConfig.ProxyInfo(
+                ProxySettings.builder()
+                        .setType(ProxySettings.Type.XRAY_WIREGUARD)
+                        .setAddress(host)
+                        .setPort(port)
+                        .build()
+        );
+        info.wgPrivateKey = secretKey;
+        info.wgPublicKey = publicKey;
+        info.wgEndpoint = endpoint;
+        JSONArray addresses = settings.optJSONArray("address");
+        if (addresses != null && addresses.length() > 0) {
+            StringBuilder sb = new StringBuilder();
+            for (int i = 0; i < addresses.length(); i++) {
+                if (i > 0) sb.append(", ");
+                sb.append(addresses.optString(i));
+            }
+            info.wgLocalAddress = sb.toString();
+        }
+        JSONArray allowedIps = peer.optJSONArray("allowedIPs");
+        if (allowedIps != null && allowedIps.length() > 0) {
+            StringBuilder sb = new StringBuilder();
+            for (int i = 0; i < allowedIps.length(); i++) {
+                if (i > 0) sb.append(", ");
+                sb.append(allowedIps.optString(i));
+            }
+            info.wgAllowedIps = sb.toString();
+        }
+        info.wgMtu = String.valueOf(settings.optInt("mtu", 1420));
+        info.wgKeepAlive = String.valueOf(peer.optInt("keepAlive", 25));
+        info.wgPresharedKey = peer.optString("presharedKey", "");
+        JSONArray remoteDns = settings.optJSONArray("remoteDNS");
+        if (remoteDns != null && remoteDns.length() > 0) {
+            StringBuilder sb = new StringBuilder();
+            for (int i = 0; i < remoteDns.length(); i++) {
+                if (i > 0) sb.append(", ");
+                sb.append(remoteDns.optString(i));
+            }
+            info.wgDns = sb.toString();
+        }
+        if (!TextUtils.isEmpty(remarks)) {
+            info.proxyName = remarks;
+        }
+        info.normalizeXrayProtocolsFields();
+        return info;
+    }
+
+    private static SharedConfig.ProxyInfo parseXrayHysteria(JSONObject outbound, JSONObject settings, JSONObject stream, String remarks) {
+        if (settings == null || settings.optInt("version", 0) != 2) {
+            return null;
+        }
+        String address = settings.optString("address", "");
+        int port = settings.optInt("port", 0);
+        if (TextUtils.isEmpty(address) || port <= 0) {
+            return null;
+        }
+        SharedConfig.ProxyInfo info = new SharedConfig.ProxyInfo(
+                ProxySettings.builder()
+                        .setType(ProxySettings.Type.XRAY_HYSTERIA2)
+                        .setAddress(address)
+                        .setPort(port)
+                        .build()
+        );
+        JSONObject hysteria = stream != null ? stream.optJSONObject("hysteriaSettings") : null;
+        if (hysteria != null) {
+            info.hyPassword = hysteria.optString("auth", "");
+            info.hyObfsPassword = hysteria.optString("obfs", "");
+            if (hysteria.has("upMbps")) {
+                info.hyUpMbps = String.valueOf(hysteria.optInt("upMbps", 0));
+            }
+            if (hysteria.has("downMbps")) {
+                info.hyDownMbps = String.valueOf(hysteria.optInt("downMbps", 0));
+            }
+        }
+        JSONObject tls = stream != null ? stream.optJSONObject("tlsSettings") : null;
+        if (tls != null) {
+            info.hySni = tls.optString("serverName", "");
+            JSONArray alpn = tls.optJSONArray("alpn");
+            if (alpn != null && alpn.length() > 0) {
+                info.hyAlpn = alpn.optString(0);
+            }
+            info.hyAllowInsecure = tls.optBoolean("allowInsecure", false);
+        }
+        if (!TextUtils.isEmpty(remarks)) {
+            info.proxyName = remarks;
+        }
+        info.normalizeXrayProtocolsFields();
         return info;
     }
 

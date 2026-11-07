@@ -112,7 +112,7 @@ dependencies {
 }
 
 def nativeTarget = project.findProperty("nativeTarget")?.toString() ?: ""
-def xrayVersion = "v26.3.27"
+def xrayVersion = "v26.7.28"
 // Recent Xray-core releases only ship android binaries for arm64-v8a and x86_64.
 // armeabi-v7a and x86 have no official android asset, so they must be supplied
 // as prebuilt binaries (built from the same xrayVersion with Go, GOOS=android)

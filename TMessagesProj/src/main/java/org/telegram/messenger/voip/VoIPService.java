@@ -3459,7 +3459,7 @@ public class VoIPService extends Service implements SensorEventListener, AudioMa
 			Instance.Proxy proxy = null;
 			if (preferences.getBoolean("proxy_enabled", false) && preferences.getBoolean("proxy_enabled_calls", false)) {
 				SharedConfig.ProxyInfo currentProxy = SharedConfig.currentProxy;
-				if (currentProxy != null && currentProxy.isXrayVless() && XrayProxyManager.isRunning() && XrayProxyManager.isSocksReady()) {
+				if (currentProxy != null && currentProxy.isXray() && XrayProxyManager.isRunning() && XrayProxyManager.isSocksReady()) {
 					proxy = new Instance.Proxy(XrayProxyManager.LOCAL_ADDRESS, XrayProxyManager.getLocalSocksPort(), null, null);
 				} else if (currentProxy != null && currentProxy.isAether() && AetherProxyManager.isRunning() && AetherProxyManager.isSocksReady()) {
 					proxy = new Instance.Proxy(AetherProxyManager.LOCAL_ADDRESS, AetherProxyManager.getLocalSocksPort(), null, null);

@@ -26,7 +26,7 @@ public class ProxyRotationController implements NotificationCenter.NotificationC
         boolean startedCheck = false;
         for (int i = 0; i < SharedConfig.proxyList.size(); i++) {
             SharedConfig.ProxyInfo proxyInfo = SharedConfig.proxyList.get(i);
-            if (proxyInfo.isXrayVless()) {
+            if (proxyInfo.isXray()) {
                 continue;
             }
             if (proxyInfo.checking || SystemClock.elapsedRealtime() - proxyInfo.availableCheckTime < 2 * 60 * 1000) {
@@ -69,7 +69,7 @@ public class ProxyRotationController implements NotificationCenter.NotificationC
         List<SharedConfig.ProxyInfo> sortedList = new ArrayList<>(SharedConfig.proxyList);
         Collections.sort(sortedList, (o1, o2) -> Long.compare(o1.ping, o2.ping));
         for (SharedConfig.ProxyInfo info : sortedList) {
-            if (info == SharedConfig.currentProxy || info.checking || !info.available || info.isXrayVless()) {
+            if (info == SharedConfig.currentProxy || info.checking || !info.available || info.isXray()) {
                 continue;
             }
 

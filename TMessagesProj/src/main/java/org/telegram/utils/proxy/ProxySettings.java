@@ -29,7 +29,22 @@ public final class ProxySettings {
         MTPROTO,
         WEB,
         XRAY_VLESS,
-        AETHER
+        AETHER,
+        XRAY_SHADOWSOCKS,
+        XRAY_VMESS,
+        XRAY_TROJAN,
+        XRAY_WIREGUARD,
+        XRAY_HYSTERIA2
+    }
+
+    /** True for every proxy type routed through the local Xray SOCKS inbound. */
+    public static boolean isXrayType(Type type) {
+        return type == Type.XRAY_VLESS
+                || type == Type.XRAY_SHADOWSOCKS
+                || type == Type.XRAY_VMESS
+                || type == Type.XRAY_TROJAN
+                || type == Type.XRAY_WIREGUARD
+                || type == Type.XRAY_HYSTERIA2;
     }
 
     private final @NonNull Type type;
@@ -59,6 +74,16 @@ public final class ProxySettings {
             user = builder.user;
             password = builder.password;
         } else if (type == Type.XRAY_VLESS) {
+            secret = "";
+            port = builder.port;
+            user = "";
+            password = "";
+        } else if (type == Type.XRAY_SHADOWSOCKS
+                || type == Type.XRAY_VMESS
+                || type == Type.XRAY_TROJAN
+                || type == Type.XRAY_WIREGUARD
+                || type == Type.XRAY_HYSTERIA2) {
+            // Xray protocols: all extra settings live in SharedConfig.ProxyInfo.
             secret = "";
             port = builder.port;
             user = "";
@@ -225,6 +250,16 @@ public final class ProxySettings {
                 editor.remove("proxy_user");
                 break;
             case XRAY_VLESS:
+                editor.putInt("proxy_port", port);
+                editor.remove("proxy_secret");
+                editor.remove("proxy_pass");
+                editor.remove("proxy_user");
+                break;
+            case XRAY_SHADOWSOCKS:
+            case XRAY_VMESS:
+            case XRAY_TROJAN:
+            case XRAY_WIREGUARD:
+            case XRAY_HYSTERIA2:
                 editor.putInt("proxy_port", port);
                 editor.remove("proxy_secret");
                 editor.remove("proxy_pass");
@@ -551,6 +586,16 @@ public final class ProxySettings {
                 return 3;
             case AETHER:
                 return 4;
+            case XRAY_SHADOWSOCKS:
+                return 5;
+            case XRAY_VMESS:
+                return 6;
+            case XRAY_TROJAN:
+                return 7;
+            case XRAY_WIREGUARD:
+                return 8;
+            case XRAY_HYSTERIA2:
+                return 9;
         }
         return 0;
     }
@@ -567,6 +612,16 @@ public final class ProxySettings {
                 return Type.XRAY_VLESS;
             case 4:
                 return Type.AETHER;
+            case 5:
+                return Type.XRAY_SHADOWSOCKS;
+            case 6:
+                return Type.XRAY_VMESS;
+            case 7:
+                return Type.XRAY_TROJAN;
+            case 8:
+                return Type.XRAY_WIREGUARD;
+            case 9:
+                return Type.XRAY_HYSTERIA2;
         }
         return Type.SOCKS5;
     }

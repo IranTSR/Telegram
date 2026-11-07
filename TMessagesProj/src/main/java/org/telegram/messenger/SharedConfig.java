@@ -65,7 +65,8 @@ public class SharedConfig {
     private final static int PROXY_SCHEMA_V4 = 4;
     private final static int PROXY_SCHEMA_V5 = 5;
     private final static int PROXY_SCHEMA_V6 = 6;
-    private final static int PROXY_CURRENT_SCHEMA_VERSION = PROXY_SCHEMA_V6;
+    private final static int PROXY_SCHEMA_V7 = 7;
+    private final static int PROXY_CURRENT_SCHEMA_VERSION = PROXY_SCHEMA_V7;
 
     public final static int PASSCODE_TYPE_PIN = 0,
             PASSCODE_TYPE_PASSWORD = 1;
@@ -416,6 +417,40 @@ public class SharedConfig {
         public String vlessRawQuery;
         public String vlessAdvancedJson;
 
+        // Xray Shadowsocks fields (schema V7, settings.getType() == ProxySettings.Type.XRAY_SHADOWSOCKS)
+        public String ssPassword;
+        public String ssMethod;
+        // Xray VMess fields (schema V7). Transport/TLS reuse the vless* fields
+        // (vlessType, vlessSecurity, vlessSni, vlessFp, vlessAlpn, vlessHost,
+        // vlessPath, vlessServiceName, vlessHeaderType, vlessMode).
+        public String vmessId;
+        public String vmessAlterId;
+        public String vmessSecurity;
+        // Xray Trojan fields (schema V7). Fingerprint/ALPN/transport reuse vlessFp,
+        // vlessAlpn, vlessType, vlessHost, vlessPath, vlessServiceName.
+        public String trojanPassword;
+        public String trojanSni;
+        public boolean trojanAllowInsecure;
+        // Xray WireGuard fields (schema V7). settings.address/port hold the peer
+        // endpoint host/port; wgEndpoint mirrors them as "host:port".
+        public String wgPrivateKey;
+        public String wgPublicKey;
+        public String wgEndpoint;
+        public String wgAllowedIps;
+        public String wgLocalAddress;
+        public String wgMtu;
+        public String wgKeepAlive;
+        public String wgPresharedKey;
+        public String wgDns;
+        // Xray Hysteria2 fields (schema V7).
+        public String hyPassword;
+        public String hySni;
+        public String hyAlpn;
+        public boolean hyAllowInsecure;
+        public String hyObfsPassword;
+        public String hyUpMbps;
+        public String hyDownMbps;
+
         // Aether fields (used when settings.getType() == ProxySettings.Type.AETHER)
         public String aetherProtocol;
         public String aetherScan;
@@ -440,7 +475,77 @@ public class SharedConfig {
         public ProxyInfo(@NonNull ProxySettings proxySettings) {
             settings = proxySettings;
             normalizeVlessFields();
+            normalizeXrayProtocolsFields();
             normalizeAetherFields();
+        }
+
+        public void normalizeXrayProtocolsFields() {
+            if (this.ssPassword == null) {
+                this.ssPassword = "";
+            }
+            if (this.ssMethod == null || this.ssMethod.isEmpty()) {
+                this.ssMethod = "aes-256-gcm";
+            }
+            if (this.vmessId == null) {
+                this.vmessId = "";
+            }
+            if (this.vmessAlterId == null || this.vmessAlterId.isEmpty()) {
+                this.vmessAlterId = "0";
+            }
+            if (this.vmessSecurity == null || this.vmessSecurity.isEmpty()) {
+                this.vmessSecurity = "auto";
+            }
+            if (this.trojanPassword == null) {
+                this.trojanPassword = "";
+            }
+            if (this.trojanSni == null) {
+                this.trojanSni = "";
+            }
+            if (this.wgPrivateKey == null) {
+                this.wgPrivateKey = "";
+            }
+            if (this.wgPublicKey == null) {
+                this.wgPublicKey = "";
+            }
+            if (this.wgEndpoint == null) {
+                this.wgEndpoint = "";
+            }
+            if (this.wgAllowedIps == null || this.wgAllowedIps.isEmpty()) {
+                this.wgAllowedIps = "0.0.0.0/0, ::/0";
+            }
+            if (this.wgLocalAddress == null || this.wgLocalAddress.isEmpty()) {
+                this.wgLocalAddress = "10.0.0.2/32";
+            }
+            if (this.wgMtu == null || this.wgMtu.isEmpty()) {
+                this.wgMtu = "1420";
+            }
+            if (this.wgKeepAlive == null || this.wgKeepAlive.isEmpty()) {
+                this.wgKeepAlive = "25";
+            }
+            if (this.wgPresharedKey == null) {
+                this.wgPresharedKey = "";
+            }
+            if (this.wgDns == null) {
+                this.wgDns = "";
+            }
+            if (this.hyPassword == null) {
+                this.hyPassword = "";
+            }
+            if (this.hySni == null) {
+                this.hySni = "";
+            }
+            if (this.hyAlpn == null || this.hyAlpn.isEmpty()) {
+                this.hyAlpn = "h3";
+            }
+            if (this.hyObfsPassword == null) {
+                this.hyObfsPassword = "";
+            }
+            if (this.hyUpMbps == null) {
+                this.hyUpMbps = "";
+            }
+            if (this.hyDownMbps == null) {
+                this.hyDownMbps = "";
+            }
         }
 
         public void normalizeVlessFields() {
@@ -564,6 +669,54 @@ public class SharedConfig {
             return settings != null && settings.getType() == ProxySettings.Type.XRAY_VLESS;
         }
 
+        /** True when the proxy is routed through the local Xray SOCKS inbound. */
+        public boolean isXray() {
+            return settings != null && ProxySettings.isXrayType(settings.getType());
+        }
+
+        public boolean isXrayShadowsocks() {
+            return settings != null && settings.getType() == ProxySettings.Type.XRAY_SHADOWSOCKS;
+        }
+
+        public boolean isXrayVmess() {
+            return settings != null && settings.getType() == ProxySettings.Type.XRAY_VMESS;
+        }
+
+        public boolean isXrayTrojan() {
+            return settings != null && settings.getType() == ProxySettings.Type.XRAY_TROJAN;
+        }
+
+        public boolean isXrayWireguard() {
+            return settings != null && settings.getType() == ProxySettings.Type.XRAY_WIREGUARD;
+        }
+
+        public boolean isXrayHysteria2() {
+            return settings != null && settings.getType() == ProxySettings.Type.XRAY_HYSTERIA2;
+        }
+
+        /** Short label used in the proxy list, e.g. "VLESS", "Shadowsocks". */
+        public String getXrayProtocolLabel() {
+            if (settings == null) {
+                return "";
+            }
+            switch (settings.getType()) {
+                case XRAY_VLESS:
+                    return "VLESS";
+                case XRAY_SHADOWSOCKS:
+                    return "Shadowsocks";
+                case XRAY_VMESS:
+                    return "VMess";
+                case XRAY_TROJAN:
+                    return "Trojan";
+                case XRAY_WIREGUARD:
+                    return "WireGuard";
+                case XRAY_HYSTERIA2:
+                    return "Hysteria2";
+                default:
+                    return "";
+            }
+        }
+
         public boolean isAether() {
             return settings != null && settings.getType() == ProxySettings.Type.AETHER;
         }
@@ -614,8 +767,24 @@ public class SharedConfig {
         }
 
         public static ProxyInfo fromUrl(String url) {
-            if (url != null && url.toLowerCase().startsWith("vless://")) {
+            if (url == null) {
+                throw new IllegalArgumentException("null url");
+            }
+            String lower = url.toLowerCase(Locale.US);
+            if (lower.startsWith("vless://")) {
                 return fromVlessUrl(url);
+            }
+            if (lower.startsWith("ss://")) {
+                return fromShadowsocksUrl(url);
+            }
+            if (lower.startsWith("vmess://")) {
+                return fromVmessUrl(url);
+            }
+            if (lower.startsWith("trojan://")) {
+                return fromTrojanUrl(url);
+            }
+            if (lower.startsWith("hy2://") || lower.startsWith("hysteria2://")) {
+                return fromHysteria2Url(url);
             }
             android.net.Uri lnk = android.net.Uri.parse(url);
             if (lnk == null) throw new IllegalArgumentException(url);
@@ -725,6 +894,448 @@ public class SharedConfig {
             }
         }
 
+        // ---- Xray share-link parsers (Shadowsocks / VMess / Trojan / Hysteria2) ----
+
+        private static String decodeBase64UrlSafe(String value) {
+            if (TextUtils.isEmpty(value)) {
+                return "";
+            }
+            String normalized = value.replace('-', '+').replace('_', '/');
+            while (normalized.length() % 4 != 0) {
+                normalized += "=";
+            }
+            try {
+                return new String(Base64.decode(normalized, Base64.DEFAULT), "UTF-8");
+            } catch (Throwable ignored) {
+                return "";
+            }
+        }
+
+        private static HashMap<String, String> parseQueryParams(String rawQuery) {
+            HashMap<String, String> params = new HashMap<>();
+            if (TextUtils.isEmpty(rawQuery)) {
+                return params;
+            }
+            for (String part : rawQuery.split("&")) {
+                String[] pair = part.split("=", 2);
+                if (pair.length != 2) {
+                    continue;
+                }
+                try {
+                    params.put(URLDecoder.decode(pair[0], "UTF-8").toLowerCase(Locale.US),
+                            URLDecoder.decode(pair[1], "UTF-8"));
+                } catch (Throwable ignored) {
+                }
+            }
+            return params;
+        }
+
+        private static String decodeFragment(String fragment) {
+            if (TextUtils.isEmpty(fragment)) {
+                return "";
+            }
+            try {
+                return URLDecoder.decode(fragment, "UTF-8");
+            } catch (Throwable ignored) {
+                return fragment;
+            }
+        }
+
+        public static ProxyInfo fromShadowsocksUrl(String url) {
+            try {
+                // Strip the scheme and the #tag first.
+                String body = url.substring("ss://".length());
+                String tag = "";
+                int hash = body.indexOf('#');
+                if (hash >= 0) {
+                    tag = decodeFragment(body.substring(hash + 1));
+                    body = body.substring(0, hash);
+                }
+                // Drop any ?plugin=... query: the core fields are imported, plugins are not.
+                int query = body.indexOf('?');
+                if (query >= 0) {
+                    body = body.substring(0, query);
+                }
+                String method = "";
+                String password = "";
+                String host = "";
+                int port = 0;
+                int at = body.lastIndexOf('@');
+                if (at >= 0) {
+                    // Form 2: ss://BASE64(method:password)@host:port
+                    String userinfo = decodeBase64UrlSafe(body.substring(0, at));
+                    int colon = userinfo.indexOf(':');
+                    if (colon >= 0) {
+                        method = userinfo.substring(0, colon);
+                        password = userinfo.substring(colon + 1);
+                    }
+                    String hostPort = body.substring(at + 1);
+                    int colonPort = hostPort.lastIndexOf(':');
+                    if (colonPort >= 0) {
+                        host = hostPort.substring(0, colonPort);
+                        port = Integer.parseInt(hostPort.substring(colonPort + 1));
+                    } else {
+                        host = hostPort;
+                    }
+                } else {
+                    // Form 1: ss://BASE64(method:password@host:port)
+                    String decoded = decodeBase64UrlSafe(body);
+                    int atDecoded = decoded.lastIndexOf('@');
+                    if (atDecoded < 0) {
+                        // Form 3 (plain, not base64): ss://method:password@host:port
+                        decoded = body;
+                        atDecoded = decoded.lastIndexOf('@');
+                    }
+                    if (atDecoded < 0) {
+                        throw new IllegalArgumentException(url);
+                    }
+                    String userinfo = decoded.substring(0, atDecoded);
+                    int colon = userinfo.indexOf(':');
+                    if (colon >= 0) {
+                        method = userinfo.substring(0, colon);
+                        password = userinfo.substring(colon + 1);
+                    }
+                    String hostPort = decoded.substring(atDecoded + 1);
+                    int colonPort = hostPort.lastIndexOf(':');
+                    if (colonPort >= 0) {
+                        host = hostPort.substring(0, colonPort);
+                        port = Integer.parseInt(hostPort.substring(colonPort + 1));
+                    } else {
+                        host = hostPort;
+                    }
+                }
+                if (TextUtils.isEmpty(host) || port <= 0 || TextUtils.isEmpty(password)) {
+                    throw new IllegalArgumentException(url);
+                }
+                ProxySettings settings = ProxySettings.builder()
+                        .setType(ProxySettings.Type.XRAY_SHADOWSOCKS)
+                        .setAddress(URLDecoder.decode(host, "UTF-8"))
+                        .setPort(port)
+                        .build();
+                ProxyInfo info = new ProxyInfo(settings);
+                info.ssMethod = TextUtils.isEmpty(method) ? "aes-256-gcm" : method;
+                info.ssPassword = password;
+                info.proxyName = tag;
+                info.normalizeXrayProtocolsFields();
+                return info;
+            } catch (IllegalArgumentException e) {
+                throw e;
+            } catch (Throwable e) {
+                throw new IllegalArgumentException(url, e);
+            }
+        }
+
+        public static ProxyInfo fromVmessUrl(String url) {
+            try {
+                String body = url.substring("vmess://".length());
+                String tag = "";
+                int hash = body.indexOf('#');
+                if (hash >= 0) {
+                    tag = decodeFragment(body.substring(hash + 1));
+                    body = body.substring(0, hash);
+                }
+                String json = decodeBase64UrlSafe(body.trim());
+                JSONObject obj = new JSONObject(json);
+                String address = obj.optString("add", "");
+                int port = obj.optInt("port", 0);
+                if (TextUtils.isEmpty(address) || port <= 0) {
+                    throw new IllegalArgumentException(url);
+                }
+                ProxySettings settings = ProxySettings.builder()
+                        .setType(ProxySettings.Type.XRAY_VMESS)
+                        .setAddress(address)
+                        .setPort(port)
+                        .build();
+                ProxyInfo info = new ProxyInfo(settings);
+                info.vmessId = obj.optString("id", "");
+                info.vmessAlterId = String.valueOf(obj.optInt("aid", 0));
+                info.vmessSecurity = obj.optString("scy", "auto");
+                if (TextUtils.isEmpty(info.vmessSecurity)) {
+                    info.vmessSecurity = "auto";
+                }
+                info.vlessType = obj.optString("net", "");
+                String tls = obj.optString("tls", "");
+                info.vlessSecurity = "tls".equalsIgnoreCase(tls) ? "tls" : "";
+                info.vlessSni = obj.optString("sni", "");
+                info.vlessHost = obj.optString("host", "");
+                info.vlessPath = obj.optString("path", "");
+                info.vlessServiceName = obj.optString("serviceName", "");
+                info.vlessFp = obj.optString("fp", "");
+                info.vlessAlpn = obj.optString("alpn", "");
+                info.vlessHeaderType = obj.optString("type", "");
+                String ps = obj.optString("ps", "");
+                info.proxyName = !TextUtils.isEmpty(ps) ? ps : tag;
+                info.normalizeVlessFields();
+                info.normalizeXrayProtocolsFields();
+                return info;
+            } catch (IllegalArgumentException e) {
+                throw e;
+            } catch (Throwable e) {
+                throw new IllegalArgumentException(url, e);
+            }
+        }
+
+        public static ProxyInfo fromTrojanUrl(String url) {
+            try {
+                java.net.URI uri = new java.net.URI(url);
+                int port = uri.getPort() > 0 ? uri.getPort() : 443;
+                String host = uri.getHost() != null ? uri.getHost() : "";
+                String password = uri.getUserInfo() != null ? uri.getUserInfo() : "";
+                if (TextUtils.isEmpty(host) || TextUtils.isEmpty(password)) {
+                    throw new IllegalArgumentException(url);
+                }
+                ProxySettings settings = ProxySettings.builder()
+                        .setType(ProxySettings.Type.XRAY_TROJAN)
+                        .setAddress(host)
+                        .setPort(port)
+                        .build();
+                ProxyInfo info = new ProxyInfo(settings);
+                info.trojanPassword = URLDecoder.decode(password, "UTF-8");
+                HashMap<String, String> params = parseQueryParams(uri.getRawQuery());
+                info.trojanSni = params.containsKey("sni") ? params.get("sni") : "";
+                String allowInsecure = params.get("allowinsecure");
+                info.trojanAllowInsecure = "1".equals(allowInsecure) || "true".equalsIgnoreCase(allowInsecure);
+                info.vlessType = params.containsKey("type") ? params.get("type") : "";
+                info.vlessHost = params.containsKey("host") ? params.get("host") : "";
+                info.vlessPath = params.containsKey("path") ? params.get("path") : "";
+                info.vlessServiceName = params.containsKey("servicename") ? params.get("servicename") : "";
+                info.vlessFp = params.containsKey("fp") ? params.get("fp") : "";
+                info.vlessAlpn = params.containsKey("alpn") ? params.get("alpn") : "";
+                info.proxyName = uri.getFragment() != null ? decodeFragment(uri.getFragment()) : "";
+                info.normalizeVlessFields();
+                info.normalizeXrayProtocolsFields();
+                return info;
+            } catch (IllegalArgumentException e) {
+                throw e;
+            } catch (Throwable e) {
+                throw new IllegalArgumentException(url, e);
+            }
+        }
+
+        public static ProxyInfo fromHysteria2Url(String url) {
+            try {
+                java.net.URI uri = new java.net.URI(url);
+                int port = uri.getPort() > 0 ? uri.getPort() : 443;
+                String host = uri.getHost() != null ? uri.getHost() : "";
+                String password = uri.getUserInfo() != null ? uri.getUserInfo() : "";
+                if (TextUtils.isEmpty(host) || TextUtils.isEmpty(password)) {
+                    throw new IllegalArgumentException(url);
+                }
+                ProxySettings settings = ProxySettings.builder()
+                        .setType(ProxySettings.Type.XRAY_HYSTERIA2)
+                        .setAddress(host)
+                        .setPort(port)
+                        .build();
+                ProxyInfo info = new ProxyInfo(settings);
+                HashMap<String, String> params = parseQueryParams(uri.getRawQuery());
+                String auth = params.containsKey("auth") ? params.get("auth") : password;
+                info.hyPassword = URLDecoder.decode(auth, "UTF-8");
+                info.hySni = params.containsKey("sni") ? params.get("sni") : "";
+                info.hyAlpn = params.containsKey("alpn") ? params.get("alpn") : "h3";
+                String insecure = params.get("insecure");
+                info.hyAllowInsecure = "1".equals(insecure) || "true".equalsIgnoreCase(insecure);
+                info.hyObfsPassword = params.containsKey("obfs-password") ? params.get("obfs-password") : "";
+                info.hyUpMbps = params.containsKey("upmbps") ? params.get("upmbps") : "";
+                info.hyDownMbps = params.containsKey("downmbps") ? params.get("downmbps") : "";
+                info.proxyName = uri.getFragment() != null ? decodeFragment(uri.getFragment()) : "";
+                info.normalizeXrayProtocolsFields();
+                return info;
+            } catch (IllegalArgumentException e) {
+                throw e;
+            } catch (Throwable e) {
+                throw new IllegalArgumentException(url, e);
+            }
+        }
+
+        /** True when the pasted text looks like a WireGuard .conf file. */
+        public static boolean isWireguardConfText(String text) {
+            if (TextUtils.isEmpty(text)) {
+                return false;
+            }
+            return text.contains("[Interface]") && text.contains("PrivateKey");
+        }
+
+        /** Parse a WireGuard .conf text block ([Interface] / [Peer]) into a proxy. */
+        public static ProxyInfo fromWireguardConf(String text) {
+            try {
+                HashMap<String, String> iface = new HashMap<>();
+                HashMap<String, String> peer = new HashMap<>();
+                HashMap<String, String> current = null;
+                for (String rawLine : text.split("\n")) {
+                    String line = rawLine.trim();
+                    if (line.startsWith("#") || line.isEmpty()) {
+                        continue;
+                    }
+                    if ("[Interface]".equalsIgnoreCase(line)) {
+                        current = iface;
+                        continue;
+                    }
+                    if ("[Peer]".equalsIgnoreCase(line)) {
+                        current = peer;
+                        continue;
+                    }
+                    int eq = line.indexOf('=');
+                    if (current == null || eq < 0) {
+                        continue;
+                    }
+                    current.put(line.substring(0, eq).trim().toLowerCase(Locale.US), line.substring(eq + 1).trim());
+                }
+                String privateKey = iface.get("privatekey");
+                String publicKey = peer.get("publickey");
+                String endpoint = peer.get("endpoint");
+                if (TextUtils.isEmpty(privateKey) || TextUtils.isEmpty(publicKey) || TextUtils.isEmpty(endpoint)) {
+                    throw new IllegalArgumentException("wireguard conf");
+                }
+                String host = endpoint;
+                int port = 51820;
+                int colon = endpoint.lastIndexOf(':');
+                if (colon >= 0) {
+                    host = endpoint.substring(0, colon).replace("[", "").replace("]", "");
+                    try {
+                        port = Integer.parseInt(endpoint.substring(colon + 1));
+                    } catch (NumberFormatException ignored) {
+                    }
+                }
+                ProxySettings settings = ProxySettings.builder()
+                        .setType(ProxySettings.Type.XRAY_WIREGUARD)
+                        .setAddress(host)
+                        .setPort(port)
+                        .build();
+                ProxyInfo info = new ProxyInfo(settings);
+                info.wgPrivateKey = privateKey;
+                info.wgPublicKey = publicKey;
+                info.wgEndpoint = endpoint;
+                info.wgLocalAddress = iface.containsKey("address") ? iface.get("address") : "10.0.0.2/32";
+                info.wgDns = iface.containsKey("dns") ? iface.get("dns") : "";
+                info.wgAllowedIps = peer.containsKey("allowedips") ? peer.get("allowedips") : "0.0.0.0/0, ::/0";
+                info.wgKeepAlive = peer.containsKey("persistentkeepalive") ? peer.get("persistentkeepalive") : "25";
+                info.wgPresharedKey = peer.containsKey("presharedkey") ? peer.get("presharedkey") : "";
+                info.normalizeXrayProtocolsFields();
+                return info;
+            } catch (IllegalArgumentException e) {
+                throw e;
+            } catch (Throwable e) {
+                throw new IllegalArgumentException("wireguard conf", e);
+            }
+        }
+
+        /** Share link for this proxy (Xray types); null when it cannot be built. */
+        public String getShareLink() {
+            if (settings == null) {
+                return null;
+            }
+            try {
+                switch (settings.getType()) {
+                    case XRAY_VLESS:
+                        return getVlessLink();
+                    case XRAY_SHADOWSOCKS: {
+                        String userinfo = ssMethod + ":" + ssPassword;
+                        String encoded = Base64.encodeToString(userinfo.getBytes("UTF-8"), Base64.URL_SAFE | Base64.NO_WRAP | Base64.NO_PADDING);
+                        StringBuilder url = new StringBuilder("ss://");
+                        url.append(encoded).append("@").append(settings.getAddress()).append(":").append(settings.getPort());
+                        if (!TextUtils.isEmpty(proxyName)) {
+                            url.append("#").append(URLEncoder.encode(proxyName, "UTF-8"));
+                        }
+                        return url.toString();
+                    }
+                    case XRAY_VMESS: {
+                        JSONObject obj = new JSONObject();
+                        obj.put("v", "2");
+                        obj.put("ps", !TextUtils.isEmpty(proxyName) ? proxyName : settings.getAddress());
+                        obj.put("add", settings.getAddress());
+                        obj.put("port", settings.getPort());
+                        obj.put("id", vmessId);
+                        int aid = 0;
+                        try {
+                            aid = Integer.parseInt(TextUtils.isEmpty(vmessAlterId) ? "0" : vmessAlterId);
+                        } catch (NumberFormatException ignored) {
+                        }
+                        obj.put("aid", aid);
+                        obj.put("scy", vmessSecurity);
+                        obj.put("net", vlessType);
+                        obj.put("type", vlessHeaderType);
+                        obj.put("host", vlessHost);
+                        obj.put("path", vlessPath);
+                        obj.put("tls", "tls".equalsIgnoreCase(vlessSecurity) ? "tls" : "");
+                        obj.put("sni", vlessSni);
+                        obj.put("fp", vlessFp);
+                        obj.put("alpn", vlessAlpn);
+                        return "vmess://" + Base64.encodeToString(obj.toString().getBytes("UTF-8"), Base64.NO_WRAP | Base64.NO_PADDING);
+                    }
+                    case XRAY_TROJAN: {
+                        StringBuilder url = new StringBuilder("trojan://");
+                        url.append(URLEncoder.encode(trojanPassword, "UTF-8"));
+                        url.append("@").append(settings.getAddress()).append(":").append(settings.getPort());
+                        ArrayList<String> params = new ArrayList<>();
+                        appendParam(params, "sni", trojanSni);
+                        appendParam(params, "alpn", vlessAlpn);
+                        appendParam(params, "fp", vlessFp);
+                        appendParam(params, "type", vlessType);
+                        appendParam(params, "host", vlessHost);
+                        appendParam(params, "path", vlessPath);
+                        if (trojanAllowInsecure) {
+                            appendParam(params, "allowInsecure", "1");
+                        }
+                        if (!params.isEmpty()) {
+                            url.append("?").append(TextUtils.join("&", params));
+                        }
+                        if (!TextUtils.isEmpty(proxyName)) {
+                            url.append("#").append(URLEncoder.encode(proxyName, "UTF-8"));
+                        }
+                        return url.toString();
+                    }
+                    case XRAY_WIREGUARD: {
+                        // No standard share URL for WireGuard: share the .conf text
+                        // itself (the QR sheet shows arbitrary text), which the
+                        // paste-import path can read back via fromWireguardConf.
+                        StringBuilder conf = new StringBuilder();
+                        conf.append("[Interface]\n");
+                        conf.append("PrivateKey = ").append(wgPrivateKey).append("\n");
+                        conf.append("Address = ").append(wgLocalAddress).append("\n");
+                        if (!TextUtils.isEmpty(wgDns)) {
+                            conf.append("DNS = ").append(wgDns).append("\n");
+                        }
+                        conf.append("\n[Peer]\n");
+                        conf.append("PublicKey = ").append(wgPublicKey).append("\n");
+                        conf.append("Endpoint = ").append(wgEndpoint).append("\n");
+                        conf.append("AllowedIPs = ").append(wgAllowedIps).append("\n");
+                        if (!TextUtils.isEmpty(wgKeepAlive)) {
+                            conf.append("PersistentKeepalive = ").append(wgKeepAlive).append("\n");
+                        }
+                        if (!TextUtils.isEmpty(wgPresharedKey)) {
+                            conf.append("PresharedKey = ").append(wgPresharedKey).append("\n");
+                        }
+                        return conf.toString();
+                    }
+                    case XRAY_HYSTERIA2: {
+                        StringBuilder url = new StringBuilder("hy2://");
+                        url.append(URLEncoder.encode(hyPassword, "UTF-8"));
+                        url.append("@").append(settings.getAddress()).append(":").append(settings.getPort());
+                        ArrayList<String> params = new ArrayList<>();
+                        appendParam(params, "sni", hySni);
+                        appendParam(params, "alpn", hyAlpn);
+                        if (hyAllowInsecure) {
+                            appendParam(params, "insecure", "1");
+                        }
+                        appendParam(params, "obfs-password", hyObfsPassword);
+                        appendParam(params, "upmbps", hyUpMbps);
+                        appendParam(params, "downmbps", hyDownMbps);
+                        if (!params.isEmpty()) {
+                            url.append("?").append(TextUtils.join("&", params));
+                        }
+                        if (!TextUtils.isEmpty(proxyName)) {
+                            url.append("#").append(URLEncoder.encode(proxyName, "UTF-8"));
+                        }
+                        return url.toString();
+                    }
+                    default:
+                        return null;
+                }
+            } catch (Throwable ignored) {
+                return null;
+            }
+        }
+
         private static ProxyInfo fromSerializedData(int version, InputSerializedData data) {
             ProxySettings.Builder builder = ProxySettings.builder()
                     .setAddress(data.readString(false))
@@ -810,6 +1421,34 @@ public class SharedConfig {
                 info.normalizeAetherFields();
             }
 
+            if (version >= PROXY_SCHEMA_V7) {
+                info.ssPassword = data.readString(false);
+                info.ssMethod = data.readString(false);
+                info.vmessId = data.readString(false);
+                info.vmessAlterId = data.readString(false);
+                info.vmessSecurity = data.readString(false);
+                info.trojanPassword = data.readString(false);
+                info.trojanSni = data.readString(false);
+                info.trojanAllowInsecure = data.readBool(false);
+                info.wgPrivateKey = data.readString(false);
+                info.wgPublicKey = data.readString(false);
+                info.wgEndpoint = data.readString(false);
+                info.wgAllowedIps = data.readString(false);
+                info.wgLocalAddress = data.readString(false);
+                info.wgMtu = data.readString(false);
+                info.wgKeepAlive = data.readString(false);
+                info.wgPresharedKey = data.readString(false);
+                info.wgDns = data.readString(false);
+                info.hyPassword = data.readString(false);
+                info.hySni = data.readString(false);
+                info.hyAlpn = data.readString(false);
+                info.hyAllowInsecure = data.readBool(false);
+                info.hyObfsPassword = data.readString(false);
+                info.hyUpMbps = data.readString(false);
+                info.hyDownMbps = data.readString(false);
+                info.normalizeXrayProtocolsFields();
+            }
+
             return info;
         }
 
@@ -867,6 +1506,35 @@ public class SharedConfig {
             data.writeString(aetherTlsCertCompression != null ? aetherTlsCertCompression : "");
             data.writeString(aetherTlsAlps != null ? aetherTlsAlps : "");
             data.writeBool(aetherGreaseSigalgs);
+            // Schema V7 fields, in the same order as fromSerializedData reads them.
+            // NOTE: builds on schema V6 or older reject a V7 proxy list outright
+            // (loadProxyList only accepts known versions), so downgrading after
+            // saving a V7 list loses the saved proxies; the current proxy falls
+            // back to the SharedPreferences copy.
+            data.writeString(ssPassword != null ? ssPassword : "");
+            data.writeString(ssMethod != null ? ssMethod : "aes-256-gcm");
+            data.writeString(vmessId != null ? vmessId : "");
+            data.writeString(vmessAlterId != null ? vmessAlterId : "0");
+            data.writeString(vmessSecurity != null ? vmessSecurity : "auto");
+            data.writeString(trojanPassword != null ? trojanPassword : "");
+            data.writeString(trojanSni != null ? trojanSni : "");
+            data.writeBool(trojanAllowInsecure);
+            data.writeString(wgPrivateKey != null ? wgPrivateKey : "");
+            data.writeString(wgPublicKey != null ? wgPublicKey : "");
+            data.writeString(wgEndpoint != null ? wgEndpoint : "");
+            data.writeString(wgAllowedIps != null ? wgAllowedIps : "0.0.0.0/0, ::/0");
+            data.writeString(wgLocalAddress != null ? wgLocalAddress : "10.0.0.2/32");
+            data.writeString(wgMtu != null ? wgMtu : "1420");
+            data.writeString(wgKeepAlive != null ? wgKeepAlive : "25");
+            data.writeString(wgPresharedKey != null ? wgPresharedKey : "");
+            data.writeString(wgDns != null ? wgDns : "");
+            data.writeString(hyPassword != null ? hyPassword : "");
+            data.writeString(hySni != null ? hySni : "");
+            data.writeString(hyAlpn != null ? hyAlpn : "h3");
+            data.writeBool(hyAllowInsecure);
+            data.writeString(hyObfsPassword != null ? hyObfsPassword : "");
+            data.writeString(hyUpMbps != null ? hyUpMbps : "");
+            data.writeString(hyDownMbps != null ? hyDownMbps : "");
         }
     }
 
@@ -1880,7 +2548,7 @@ public class SharedConfig {
             if (count == -1) { // V2 or newer
                 int version = data.readByte(false);
 
-                if (version == PROXY_SCHEMA_V2 || version == PROXY_SCHEMA_V3 || version == PROXY_SCHEMA_V4 || version == PROXY_SCHEMA_V5 || version == PROXY_SCHEMA_V6) {
+                if (version == PROXY_SCHEMA_V2 || version == PROXY_SCHEMA_V3 || version == PROXY_SCHEMA_V4 || version == PROXY_SCHEMA_V5 || version == PROXY_SCHEMA_V6 || version == PROXY_SCHEMA_V7) {
                     count = data.readInt32(false);
 
                     for (int i = 0; i < count; i++) {
@@ -1992,6 +2660,56 @@ public class SharedConfig {
         if (!Objects.equals(a.settings, b.settings)) {
             return false;
         }
+        if (a.isXrayShadowsocks() && b.isXrayShadowsocks()) {
+            return TextUtils.equals(a.ssMethod, b.ssMethod)
+                    && TextUtils.equals(a.ssPassword, b.ssPassword);
+        }
+        if (a.isXrayVmess() && b.isXrayVmess()) {
+            return TextUtils.equals(a.vmessId, b.vmessId)
+                    && TextUtils.equals(a.vmessAlterId, b.vmessAlterId)
+                    && TextUtils.equals(a.vmessSecurity, b.vmessSecurity)
+                    && TextUtils.equals(a.vlessType, b.vlessType)
+                    && TextUtils.equals(a.vlessHost, b.vlessHost)
+                    && TextUtils.equals(a.vlessPath, b.vlessPath)
+                    && TextUtils.equals(a.vlessServiceName, b.vlessServiceName)
+                    && TextUtils.equals(a.vlessSni, b.vlessSni)
+                    && TextUtils.equals(a.vlessFp, b.vlessFp)
+                    && TextUtils.equals(a.vlessAlpn, b.vlessAlpn)
+                    && TextUtils.equals(a.vlessHeaderType, b.vlessHeaderType)
+                    && a.vlessAllowInsecure == b.vlessAllowInsecure;
+        }
+        if (a.isXrayTrojan() && b.isXrayTrojan()) {
+            return TextUtils.equals(a.trojanPassword, b.trojanPassword)
+                    && TextUtils.equals(a.trojanSni, b.trojanSni)
+                    && TextUtils.equals(a.trojanAllowInsecure, b.trojanAllowInsecure)
+                    && TextUtils.equals(a.vlessType, b.vlessType)
+                    && TextUtils.equals(a.vlessHost, b.vlessHost)
+                    && TextUtils.equals(a.vlessPath, b.vlessPath)
+                    && TextUtils.equals(a.vlessServiceName, b.vlessServiceName)
+                    && TextUtils.equals(a.vlessFp, b.vlessFp)
+                    && TextUtils.equals(a.vlessAlpn, b.vlessAlpn)
+                    && TextUtils.equals(a.vlessHeaderType, b.vlessHeaderType);
+        }
+        if (a.isXrayWireguard() && b.isXrayWireguard()) {
+            return TextUtils.equals(a.wgPrivateKey, b.wgPrivateKey)
+                    && TextUtils.equals(a.wgPublicKey, b.wgPublicKey)
+                    && TextUtils.equals(a.wgEndpoint, b.wgEndpoint)
+                    && TextUtils.equals(a.wgAllowedIps, b.wgAllowedIps)
+                    && TextUtils.equals(a.wgLocalAddress, b.wgLocalAddress)
+                    && TextUtils.equals(a.wgMtu, b.wgMtu)
+                    && TextUtils.equals(a.wgKeepAlive, b.wgKeepAlive)
+                    && TextUtils.equals(a.wgPresharedKey, b.wgPresharedKey)
+                    && TextUtils.equals(a.wgDns, b.wgDns);
+        }
+        if (a.isXrayHysteria2() && b.isXrayHysteria2()) {
+            return TextUtils.equals(a.hyPassword, b.hyPassword)
+                    && TextUtils.equals(a.hySni, b.hySni)
+                    && TextUtils.equals(a.hyAlpn, b.hyAlpn)
+                    && TextUtils.equals(a.hyAllowInsecure, b.hyAllowInsecure)
+                    && TextUtils.equals(a.hyObfsPassword, b.hyObfsPassword)
+                    && TextUtils.equals(a.hyUpMbps, b.hyUpMbps)
+                    && TextUtils.equals(a.hyDownMbps, b.hyDownMbps);
+        }
         if (a.isXrayVless() && b.isXrayVless()) {
             return TextUtils.equals(a.vlessId, b.vlessId)
                     && TextUtils.equals(a.vlessSecurity, b.vlessSecurity)
@@ -2058,7 +2776,7 @@ public class SharedConfig {
             if (enabled) {
                 ConnectionsManager.setProxySettings(false, null);
             }
-            if (proxyInfo.isXrayVless()) {
+            if (proxyInfo.isXray()) {
                 XrayProxyManager.stopService();
             }
             if (proxyInfo.isAether()) {

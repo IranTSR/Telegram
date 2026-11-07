@@ -33,7 +33,7 @@ import java.util.zip.ZipInputStream;
 public class XrayProxyManager {
     public static final String LOCAL_ADDRESS = "127.0.0.1";
     private static final int DEFAULT_SOCKS_PORT = 1081;
-    private static final String DEFAULT_XRAY_VERSION = "v26.3.27";
+    private static final String DEFAULT_XRAY_VERSION = "v26.7.28";
     public static final int STATE_IDLE = 0;
     public static final int STATE_DOWNLOADING = 1;
     public static final int STATE_STARTING = 2;
@@ -177,19 +177,20 @@ public class XrayProxyManager {
     public static void maybeStartFromApp() {
         SharedConfig.loadProxyList();
         if (SharedConfig.currentProxy != null
-                && SharedConfig.currentProxy.isXrayVless()
+                && SharedConfig.currentProxy.isXray()
                 && MessagesController.getGlobalMainSettings().getBoolean("proxy_enabled", false)) {
             startService();
         }
     }
 
     public static void ensureRunning(SharedConfig.ProxyInfo info) {
-        if (info == null || !info.isXrayVless()) {
+        if (info == null || !info.isXray()) {
             return;
         }
-        if (TextUtils.isEmpty(info.vlessId)) {
-            FileLog.e("Xray: missing VLESS id");
-            markFailed("missing VLESS id");
+        String missing = validateRequiredFields(info);
+        if (missing != null) {
+            FileLog.e("Xray: " + missing);
+            markFailed(missing);
             return;
         }
         synchronized (sync) {
@@ -465,6 +466,45 @@ public class XrayProxyManager {
         }
     }
 
+    /** Returns an error string when a required field for the proxy type is missing, else null. */
+    private static String validateRequiredFields(SharedConfig.ProxyInfo info) {
+        if (info.isXrayVless()) {
+            if (TextUtils.isEmpty(info.vlessId)) {
+                return "missing VLESS id";
+            }
+        } else if (info.isXrayShadowsocks()) {
+            if (TextUtils.isEmpty(info.ssPassword)) {
+                return "missing Shadowsocks password";
+            }
+            if (TextUtils.isEmpty(info.ssMethod)) {
+                return "missing Shadowsocks method";
+            }
+        } else if (info.isXrayVmess()) {
+            if (TextUtils.isEmpty(info.vmessId)) {
+                return "missing VMess id";
+            }
+        } else if (info.isXrayTrojan()) {
+            if (TextUtils.isEmpty(info.trojanPassword)) {
+                return "missing Trojan password";
+            }
+        } else if (info.isXrayWireguard()) {
+            if (TextUtils.isEmpty(info.wgPrivateKey)) {
+                return "missing WireGuard private key";
+            }
+            if (TextUtils.isEmpty(info.wgPublicKey)) {
+                return "missing WireGuard peer public key";
+            }
+            if (TextUtils.isEmpty(info.settings.getAddress())) {
+                return "missing WireGuard endpoint";
+            }
+        } else if (info.isXrayHysteria2()) {
+            if (TextUtils.isEmpty(info.hyPassword)) {
+                return "missing Hysteria2 password";
+            }
+        }
+        return null;
+    }
+
     private static String buildConfig(SharedConfig.ProxyInfo info) throws Exception {
         JSONObject root = new JSONObject();
         JSONObject log = new JSONObject();
@@ -478,11 +518,32 @@ public class XrayProxyManager {
         inbound.put("protocol", "socks");
         JSONObject inboundSettings = new JSONObject();
         inboundSettings.put("auth", "noauth");
+        // UDP is enabled on the SOCKS inbound so VoIP and WireGuard (UDP)
+        // traffic can flow through the same local proxy.
         inboundSettings.put("udp", true);
         inboundSettings.put("ip", LOCAL_ADDRESS);
         inbound.put("settings", inboundSettings);
         root.put("inbounds", new JSONArray().put(inbound));
 
+        JSONObject outbound;
+        if (info.isXrayShadowsocks()) {
+            outbound = buildShadowsocksOutbound(info);
+        } else if (info.isXrayVmess()) {
+            outbound = buildVmessOutbound(info);
+        } else if (info.isXrayTrojan()) {
+            outbound = buildTrojanOutbound(info);
+        } else if (info.isXrayWireguard()) {
+            outbound = buildWireguardOutbound(info);
+        } else if (info.isXrayHysteria2()) {
+            outbound = buildHysteria2Outbound(info);
+        } else {
+            outbound = buildVlessOutbound(info);
+        }
+        root.put("outbounds", new JSONArray().put(outbound));
+        return root.toString();
+    }
+
+    private static JSONObject buildVlessOutbound(SharedConfig.ProxyInfo info) throws Exception {
         JSONObject outbound = new JSONObject();
         outbound.put("tag", "proxy");
         outbound.put("protocol", "vless");
@@ -503,85 +564,263 @@ public class XrayProxyManager {
         settings.put("vnext", new JSONArray().put(vnext));
         outbound.put("settings", settings);
 
+        JSONObject stream = buildStreamSettings(info.vlessType, info.vlessSecurity,
+                info.vlessSni, info.vlessFp, info.vlessAlpn, info.vlessAllowInsecure,
+                info.vlessHost, info.vlessPath, info.vlessServiceName, info.vlessMode,
+                info.vlessHeaderType, info.vlessSeed, info.vlessQuicSecurity, info.vlessQuicKey,
+                info.vlessPublicKey, info.vlessShortId, info.vlessSpiderX);
+        outbound.put("streamSettings", stream);
+        applyAdvancedJson(outbound, stream, info.vlessAdvancedJson);
+        return outbound;
+    }
+
+    private static JSONObject buildShadowsocksOutbound(SharedConfig.ProxyInfo info) throws Exception {
+        JSONObject outbound = new JSONObject();
+        outbound.put("tag", "proxy");
+        outbound.put("protocol", "shadowsocks");
+        JSONObject server = new JSONObject();
+        server.put("address", info.settings.getAddress());
+        server.put("port", info.settings.getPort());
+        server.put("method", TextUtils.isEmpty(info.ssMethod) ? "aes-256-gcm" : info.ssMethod);
+        server.put("password", info.ssPassword);
+        JSONObject settings = new JSONObject();
+        settings.put("servers", new JSONArray().put(server));
+        outbound.put("settings", settings);
+        return outbound;
+    }
+
+    private static JSONObject buildVmessOutbound(SharedConfig.ProxyInfo info) throws Exception {
+        JSONObject outbound = new JSONObject();
+        outbound.put("tag", "proxy");
+        outbound.put("protocol", "vmess");
+
+        JSONObject user = new JSONObject();
+        user.put("id", info.vmessId);
+        int alterId = 0;
+        try {
+            alterId = Integer.parseInt(TextUtils.isEmpty(info.vmessAlterId) ? "0" : info.vmessAlterId);
+        } catch (NumberFormatException ignored) {
+        }
+        user.put("alterId", alterId);
+        user.put("security", TextUtils.isEmpty(info.vmessSecurity) ? "auto" : info.vmessSecurity);
+
+        JSONObject vnext = new JSONObject();
+        vnext.put("address", info.settings.getAddress());
+        vnext.put("port", info.settings.getPort());
+        vnext.put("users", new JSONArray().put(user));
+
+        JSONObject settings = new JSONObject();
+        settings.put("vnext", new JSONArray().put(vnext));
+        outbound.put("settings", settings);
+
+        // VMess reuses the VLESS transport/TLS fields (network, security, SNI,
+        // fingerprint, ALPN, ws/grpc host/path, ...). Flow/encryption do not apply.
+        JSONObject stream = buildStreamSettings(info.vlessType, info.vlessSecurity,
+                info.vlessSni, info.vlessFp, info.vlessAlpn, info.vlessAllowInsecure,
+                info.vlessHost, info.vlessPath, info.vlessServiceName, info.vlessMode,
+                info.vlessHeaderType, null, null, null,
+                null, null, null);
+        outbound.put("streamSettings", stream);
+        applyAdvancedJson(outbound, stream, info.vlessAdvancedJson);
+        return outbound;
+    }
+
+    private static JSONObject buildTrojanOutbound(SharedConfig.ProxyInfo info) throws Exception {
+        JSONObject outbound = new JSONObject();
+        outbound.put("tag", "proxy");
+        outbound.put("protocol", "trojan");
+
+        JSONObject server = new JSONObject();
+        server.put("address", info.settings.getAddress());
+        server.put("port", info.settings.getPort());
+        server.put("password", info.trojanPassword);
+        JSONObject settings = new JSONObject();
+        settings.put("servers", new JSONArray().put(server));
+        outbound.put("settings", settings);
+
+        // Trojan always uses TLS; transport (tcp/ws/grpc) reuses the VLESS fields.
+        JSONObject stream = buildStreamSettings(info.vlessType, "tls",
+                TextUtils.isEmpty(info.trojanSni) ? info.vlessSni : info.trojanSni,
+                info.vlessFp, info.vlessAlpn, info.trojanAllowInsecure,
+                info.vlessHost, info.vlessPath, info.vlessServiceName, info.vlessMode,
+                info.vlessHeaderType, null, null, null,
+                null, null, null);
+        outbound.put("streamSettings", stream);
+        applyAdvancedJson(outbound, stream, info.vlessAdvancedJson);
+        return outbound;
+    }
+
+    private static JSONObject buildWireguardOutbound(SharedConfig.ProxyInfo info) throws Exception {
+        JSONObject outbound = new JSONObject();
+        outbound.put("tag", "proxy");
+        outbound.put("protocol", "wireguard");
+
+        JSONObject settings = new JSONObject();
+        settings.put("secretKey", info.wgPrivateKey);
+        JSONArray addresses = new JSONArray();
+        for (String address : (TextUtils.isEmpty(info.wgLocalAddress) ? "10.0.0.2/32" : info.wgLocalAddress).split(",")) {
+            if (!TextUtils.isEmpty(address.trim())) {
+                addresses.put(address.trim());
+            }
+        }
+        settings.put("address", addresses);
+        int mtu = 1420;
+        try {
+            mtu = Integer.parseInt(TextUtils.isEmpty(info.wgMtu) ? "1420" : info.wgMtu);
+        } catch (NumberFormatException ignored) {
+        }
+        settings.put("mtu", mtu);
+        // The .conf DNS servers become Xray's remoteDNS: DNS for proxied domain
+        // names is resolved through the tunnel itself.
+        if (!TextUtils.isEmpty(info.wgDns)) {
+            JSONArray dns = new JSONArray();
+            for (String server : info.wgDns.split("[,\\s]+")) {
+                if (!TextUtils.isEmpty(server.trim())) {
+                    dns.put(server.trim());
+                }
+            }
+            if (dns.length() > 0) {
+                settings.put("remoteDNS", dns);
+            }
+        }
+
+        JSONObject peer = new JSONObject();
+        peer.put("publicKey", info.wgPublicKey);
+        String endpoint = TextUtils.isEmpty(info.wgEndpoint)
+                ? info.settings.getAddress() + ":" + info.settings.getPort()
+                : info.wgEndpoint;
+        peer.put("endpoint", endpoint);
+        JSONArray allowedIps = new JSONArray();
+        for (String ip : (TextUtils.isEmpty(info.wgAllowedIps) ? "0.0.0.0/0, ::/0" : info.wgAllowedIps).split(",")) {
+            if (!TextUtils.isEmpty(ip.trim())) {
+                allowedIps.put(ip.trim());
+            }
+        }
+        peer.put("allowedIPs", allowedIps);
+        int keepAlive = 25;
+        try {
+            keepAlive = Integer.parseInt(TextUtils.isEmpty(info.wgKeepAlive) ? "25" : info.wgKeepAlive);
+        } catch (NumberFormatException ignored) {
+        }
+        peer.put("keepAlive", keepAlive);
+        if (!TextUtils.isEmpty(info.wgPresharedKey)) {
+            peer.put("presharedKey", info.wgPresharedKey);
+        }
+        settings.put("peers", new JSONArray().put(peer));
+        outbound.put("settings", settings);
+        return outbound;
+    }
+
+    private static JSONObject buildHysteria2Outbound(SharedConfig.ProxyInfo info) throws Exception {
+        // Official shape (xtls.github.io, outbound "hysteria", transport "hysteria"):
+        // settings {version: 2, address, port}; streamSettings {network: "hysteria",
+        // security: "tls", tlsSettings {serverName, alpn, allowInsecure},
+        // hysteriaSettings {version: 2, auth, ...}}.
+        JSONObject outbound = new JSONObject();
+        outbound.put("tag", "proxy");
+        outbound.put("protocol", "hysteria");
+        JSONObject settings = new JSONObject();
+        settings.put("version", 2);
+        settings.put("address", info.settings.getAddress());
+        settings.put("port", info.settings.getPort());
+        outbound.put("settings", settings);
+
         JSONObject stream = new JSONObject();
-        String network = mapNetwork(info.vlessType);
+        stream.put("network", "hysteria");
+        stream.put("security", "tls");
+        JSONObject tls = new JSONObject();
+        if (!TextUtils.isEmpty(info.hySni)) {
+            tls.put("serverName", info.hySni);
+        }
+        JSONArray alpn = new JSONArray();
+        alpn.put(TextUtils.isEmpty(info.hyAlpn) ? "h3" : info.hyAlpn);
+        tls.put("alpn", alpn);
+        if (info.hyAllowInsecure) {
+            tls.put("allowInsecure", true);
+        }
+        stream.put("tlsSettings", tls);
+
+        JSONObject hysteria = new JSONObject();
+        hysteria.put("version", 2);
+        hysteria.put("auth", info.hyPassword);
+        // NOTE: Xray v26.7.28's hysteria transport Config (transport/internet/
+        // hysteria/config.proto) only has auth, udp_idle_timeout and masquerade
+        // fields — there is no obfs / upMbps / downMbps key, and unknown keys are
+        // silently ignored. hyObfsPassword / hyUpMbps / hyDownMbps are therefore
+        // stored and imported, but NOT emitted here until a core version supports
+        // them; emitting them would only look like Salamander/bandwidth worked.
+        stream.put("hysteriaSettings", hysteria);
+        outbound.put("streamSettings", stream);
+        return outbound;
+    }
+
+    /**
+     * Shared streamSettings builder for VLESS / VMess / Trojan. Null parameters
+     * mean "not applicable for this protocol" and are skipped.
+     */
+    private static JSONObject buildStreamSettings(String type, String security,
+            String sni, String fp, String alpn, boolean allowInsecure,
+            String host, String path, String serviceName, String mode,
+            String headerType, String seed, String quicSecurity, String quicKey,
+            String publicKey, String shortId, String spiderX) throws Exception {
+        JSONObject stream = new JSONObject();
+        String network = mapNetwork(type);
         stream.put("network", network);
 
-        String security = normalizeSecurity(info.vlessSecurity);
-        stream.put("security", security);
-        if ("tls".equals(security)) {
-            JSONObject tls = new JSONObject();
-            if (!TextUtils.isEmpty(info.vlessSni)) {
-                tls.put("serverName", info.vlessSni);
-            }
-            if (!TextUtils.isEmpty(info.vlessFp)) {
-                tls.put("fingerprint", info.vlessFp);
-            }
-            if (!TextUtils.isEmpty(info.vlessAlpn)) {
-                JSONArray alpn = new JSONArray();
-                for (String item : info.vlessAlpn.split(",")) {
-                    if (!TextUtils.isEmpty(item.trim())) {
-                        alpn.put(item.trim());
-                    }
-                }
-                if (alpn.length() > 0) {
-                    tls.put("alpn", alpn);
-                }
-            }
-            if (info.vlessAllowInsecure) {
-                tls.put("allowInsecure", true);
-            }
-            stream.put("tlsSettings", tls);
-        } else if ("reality".equals(security)) {
+        String normalizedSecurity = normalizeSecurity(security);
+        stream.put("security", normalizedSecurity);
+        if ("tls".equals(normalizedSecurity)) {
+            stream.put("tlsSettings", buildTlsSettings(sni, fp, alpn, allowInsecure));
+        } else if ("reality".equals(normalizedSecurity)) {
             JSONObject reality = new JSONObject();
-            if (!TextUtils.isEmpty(info.vlessSni)) {
-                reality.put("serverName", info.vlessSni);
+            if (!TextUtils.isEmpty(sni)) {
+                reality.put("serverName", sni);
             }
-            if (!TextUtils.isEmpty(info.vlessFp)) {
-                reality.put("fingerprint", info.vlessFp);
+            if (!TextUtils.isEmpty(fp)) {
+                reality.put("fingerprint", fp);
             }
-            if (!TextUtils.isEmpty(info.vlessPublicKey)) {
-                reality.put("publicKey", info.vlessPublicKey);
+            if (!TextUtils.isEmpty(publicKey)) {
+                reality.put("publicKey", publicKey);
             }
-            if (!TextUtils.isEmpty(info.vlessShortId)) {
-                reality.put("shortId", info.vlessShortId);
+            if (!TextUtils.isEmpty(shortId)) {
+                reality.put("shortId", shortId);
             }
-            if (!TextUtils.isEmpty(info.vlessSpiderX)) {
-                reality.put("spiderX", info.vlessSpiderX);
+            if (!TextUtils.isEmpty(spiderX)) {
+                reality.put("spiderX", spiderX);
             }
             stream.put("realitySettings", reality);
         }
 
         if ("ws".equals(network)) {
             JSONObject ws = new JSONObject();
-            if (!TextUtils.isEmpty(info.vlessPath)) {
-                ws.put("path", info.vlessPath);
+            if (!TextUtils.isEmpty(path)) {
+                ws.put("path", path);
             }
-            if (!TextUtils.isEmpty(info.vlessHost)) {
+            if (!TextUtils.isEmpty(host)) {
                 JSONObject headers = new JSONObject();
-                headers.put("Host", info.vlessHost);
+                headers.put("Host", host);
                 ws.put("headers", headers);
             }
             stream.put("wsSettings", ws);
         } else if ("grpc".equals(network)) {
             JSONObject grpc = new JSONObject();
-            if (!TextUtils.isEmpty(info.vlessServiceName)) {
-                grpc.put("serviceName", info.vlessServiceName);
+            if (!TextUtils.isEmpty(serviceName)) {
+                grpc.put("serviceName", serviceName);
             }
-            if (!TextUtils.isEmpty(info.vlessMode)) {
-                grpc.put("multiMode", "multi".equalsIgnoreCase(info.vlessMode) || "true".equalsIgnoreCase(info.vlessMode));
+            if (!TextUtils.isEmpty(mode)) {
+                grpc.put("multiMode", "multi".equalsIgnoreCase(mode) || "true".equalsIgnoreCase(mode));
             }
             stream.put("grpcSettings", grpc);
         } else if ("http".equals(network)) {
             JSONObject http = new JSONObject();
-            if (!TextUtils.isEmpty(info.vlessPath)) {
-                http.put("path", info.vlessPath);
+            if (!TextUtils.isEmpty(path)) {
+                http.put("path", path);
             }
-            if (!TextUtils.isEmpty(info.vlessHost)) {
+            if (!TextUtils.isEmpty(host)) {
                 JSONArray hosts = new JSONArray();
-                for (String host : info.vlessHost.split(",")) {
-                    if (!TextUtils.isEmpty(host.trim())) {
-                        hosts.put(host.trim());
+                for (String item : host.split(",")) {
+                    if (!TextUtils.isEmpty(item.trim())) {
+                        hosts.put(item.trim());
                     }
                 }
                 if (hosts.length() > 0) {
@@ -591,41 +830,62 @@ public class XrayProxyManager {
             stream.put("httpSettings", http);
         } else if ("kcp".equals(network)) {
             JSONObject kcp = new JSONObject();
-            if (!TextUtils.isEmpty(info.vlessSeed)) {
-                kcp.put("seed", info.vlessSeed);
+            if (!TextUtils.isEmpty(seed)) {
+                kcp.put("seed", seed);
             }
-            if (!TextUtils.isEmpty(info.vlessHeaderType)) {
+            if (!TextUtils.isEmpty(headerType)) {
                 JSONObject header = new JSONObject();
-                header.put("type", info.vlessHeaderType);
+                header.put("type", headerType);
                 kcp.put("header", header);
             }
             stream.put("kcpSettings", kcp);
         } else if ("quic".equals(network)) {
             JSONObject quic = new JSONObject();
-            if (!TextUtils.isEmpty(info.vlessQuicSecurity)) {
-                quic.put("security", info.vlessQuicSecurity);
+            if (!TextUtils.isEmpty(quicSecurity)) {
+                quic.put("security", quicSecurity);
             }
-            if (!TextUtils.isEmpty(info.vlessQuicKey)) {
-                quic.put("key", info.vlessQuicKey);
+            if (!TextUtils.isEmpty(quicKey)) {
+                quic.put("key", quicKey);
             }
-            if (!TextUtils.isEmpty(info.vlessHeaderType)) {
+            if (!TextUtils.isEmpty(headerType)) {
                 JSONObject header = new JSONObject();
-                header.put("type", info.vlessHeaderType);
+                header.put("type", headerType);
                 quic.put("header", header);
             }
             stream.put("quicSettings", quic);
-        } else if ("tcp".equals(network) && !TextUtils.isEmpty(info.vlessHeaderType)) {
+        } else if ("tcp".equals(network) && !TextUtils.isEmpty(headerType)) {
             JSONObject tcp = new JSONObject();
             JSONObject header = new JSONObject();
-            header.put("type", info.vlessHeaderType);
+            header.put("type", headerType);
             tcp.put("header", header);
             stream.put("tcpSettings", tcp);
         }
+        return stream;
+    }
 
-        outbound.put("streamSettings", stream);
-        applyAdvancedJson(outbound, stream, info.vlessAdvancedJson);
-        root.put("outbounds", new JSONArray().put(outbound));
-        return root.toString();
+    private static JSONObject buildTlsSettings(String sni, String fp, String alpn, boolean allowInsecure) throws Exception {
+        JSONObject tls = new JSONObject();
+        if (!TextUtils.isEmpty(sni)) {
+            tls.put("serverName", sni);
+        }
+        if (!TextUtils.isEmpty(fp)) {
+            tls.put("fingerprint", fp);
+        }
+        if (!TextUtils.isEmpty(alpn)) {
+            JSONArray alpnArray = new JSONArray();
+            for (String item : alpn.split(",")) {
+                if (!TextUtils.isEmpty(item.trim())) {
+                    alpnArray.put(item.trim());
+                }
+            }
+            if (alpnArray.length() > 0) {
+                tls.put("alpn", alpnArray);
+            }
+        }
+        if (allowInsecure) {
+            tls.put("allowInsecure", true);
+        }
+        return tls;
     }
 
     private static String normalizeSecurity(String security) {
