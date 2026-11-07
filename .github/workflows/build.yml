@@ -58,11 +58,11 @@ jobs:
         run: |
           # Upstream Xray-core no longer ships android binaries for armeabi-v7a/x86;
           # build them from the same source tag with Go (GOOS=android, NDK clang for cgo linking).
-          # Xray v26.7.28 needs Go >= 1.26, newer than apt's golang-go, so install from go.dev.
+          # Xray v26.7.28 needs Go 1.26 (its go.mod says go 1.26); Go 1.27 breaks the build: wlynxg/anet links net.zoneCache, removed in Go 1.27. Install Go 1.26.5 from go.dev.
           # v26.7.28 is the first version in the 26.7.x line with Hysteria2 outbound support
           # (landed in v26.6.1); 26.9.x/26.10.x are avoided: they refuse unencrypted
           # VLESS/Trojan outbounds on public internet and drop Shadowsocks none/plain.
-          curl -sSL -o /tmp/go.tgz https://go.dev/dl/go1.27.1.linux-amd64.tar.gz
+          curl -sSL -o /tmp/go.tgz https://go.dev/dl/go1.26.5.linux-amd64.tar.gz
           sudo rm -rf /usr/local/go && sudo tar -xzf /tmp/go.tgz -C /usr/local
           export PATH=/usr/local/go/bin:$PATH
           echo "/usr/local/go/bin" >> $GITHUB_PATH
