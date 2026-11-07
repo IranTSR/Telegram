@@ -2681,7 +2681,7 @@ public class SharedConfig {
         if (a.isXrayTrojan() && b.isXrayTrojan()) {
             return TextUtils.equals(a.trojanPassword, b.trojanPassword)
                     && TextUtils.equals(a.trojanSni, b.trojanSni)
-                    && TextUtils.equals(a.trojanAllowInsecure, b.trojanAllowInsecure)
+                    && a.trojanAllowInsecure == b.trojanAllowInsecure
                     && TextUtils.equals(a.vlessType, b.vlessType)
                     && TextUtils.equals(a.vlessHost, b.vlessHost)
                     && TextUtils.equals(a.vlessPath, b.vlessPath)
@@ -2705,7 +2705,7 @@ public class SharedConfig {
             return TextUtils.equals(a.hyPassword, b.hyPassword)
                     && TextUtils.equals(a.hySni, b.hySni)
                     && TextUtils.equals(a.hyAlpn, b.hyAlpn)
-                    && TextUtils.equals(a.hyAllowInsecure, b.hyAllowInsecure)
+                    && a.hyAllowInsecure == b.hyAllowInsecure
                     && TextUtils.equals(a.hyObfsPassword, b.hyObfsPassword)
                     && TextUtils.equals(a.hyUpMbps, b.hyUpMbps)
                     && TextUtils.equals(a.hyDownMbps, b.hyDownMbps);
