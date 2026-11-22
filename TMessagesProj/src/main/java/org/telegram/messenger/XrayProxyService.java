@@ -25,6 +25,7 @@ public class XrayProxyService extends Service {
         String action = intent != null ? intent.getAction() : null;
         if (ACTION_STOP.equals(action)) {
             XrayProxyManager.stopProcess();
+            AmneziaWgManager.stop();
             XrayProxyManager.setProgressListener(null);
             stopForeground(true);
             stopSelf();
@@ -54,10 +55,22 @@ public class XrayProxyService extends Service {
         });
         new Thread(() -> {
             try {
-                XrayProxyManager.ensureRunning(SharedConfig.currentProxy);
+                SharedConfig.ProxyInfo proxy = SharedConfig.currentProxy;
+                if (proxy != null && proxy.isXrayWireguard()) {
+                    XrayProxyManager.stopProcess();
+                    AetherProxyManager.stopProcess();
+                    AmneziaWgManager.start(getApplicationContext(), proxy);
+                } else {
+                    AmneziaWgManager.stop();
+                    XrayProxyManager.ensureRunning(proxy);
+                }
             } finally {
                 XrayProxyManager.setProgressListener(null);
-                if (XrayProxyManager.waitForSocksReady(10_000)) {
+                boolean wireguard = SharedConfig.currentProxy != null && SharedConfig.currentProxy.isXrayWireguard();
+                boolean connected = wireguard
+                        ? AmneziaWgManager.isRunning()
+                        : XrayProxyManager.waitForSocksReady(10_000);
+                if (connected) {
                     XrayProxyManager.markRunning();
                     updateNotificationRunning();
                 } else {
@@ -73,6 +86,7 @@ public class XrayProxyService extends Service {
     public void onDestroy() {
         super.onDestroy();
         XrayProxyManager.stopProcess();
+        AmneziaWgManager.stop();
         XrayProxyManager.setProgressListener(null);
     }
 
