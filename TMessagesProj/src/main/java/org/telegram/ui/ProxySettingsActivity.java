@@ -57,7 +57,6 @@ import org.telegram.messenger.SharedConfig;
 import org.telegram.messenger.XrayProxyManager;
 import org.telegram.messenger.AetherProxyManager;
 import org.telegram.messenger.AmneziaWgPresets;
-import org.telegram.messenger.AmneziaWgManager;
 import org.telegram.messenger.SvgHelper;
 import org.telegram.messenger.Utilities;
 import org.telegram.utils.proxy.WebProxyTransport;
