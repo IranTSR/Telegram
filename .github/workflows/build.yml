@@ -1,6 +1,9 @@
 name: Build Telegram XRay
 
 on:
+  push:
+    branches:
+      - fix/xray-protocols-connection
   workflow_dispatch:
     inputs:
       publish_release:
