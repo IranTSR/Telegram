@@ -1,7 +1,6 @@
 package org.telegram.messenger;
 
 import android.content.Context;
-import android.os.Build;
 import android.text.TextUtils;
 
 import org.json.JSONArray;
@@ -36,17 +35,20 @@ public final class AmneziaWgManager {
     }
 
     public static boolean isRunning() {
-        synchronized (LOCK) {
-            return process != null && process.isAlive() && isSocksReady();
-        }
+        return isSocksReady();
     }
 
     public static boolean isSocksReady() {
-        try (Socket socket = new Socket()) {
-            socket.connect(new InetSocketAddress(LISTEN_ADDRESS, SOCKS_PORT), 250);
-            return true;
-        } catch (Exception ignore) {
-            return false;
+        synchronized (LOCK) {
+            if (process == null || !process.isAlive()) {
+                return false;
+            }
+            try (Socket socket = new Socket()) {
+                socket.connect(new InetSocketAddress(LISTEN_ADDRESS, SOCKS_PORT), 250);
+                return true;
+            } catch (Exception ignore) {
+                return false;
+            }
         }
     }
 
