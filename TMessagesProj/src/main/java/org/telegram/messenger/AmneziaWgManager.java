@@ -40,7 +40,7 @@ public final class AmneziaWgManager {
 
     public static boolean isSocksReady() {
         synchronized (LOCK) {
-            if (process == null || !process.isAlive()) {
+            if (process == null || !isProcessAlive(process)) {
                 return false;
             }
             try (Socket socket = new Socket()) {
@@ -101,7 +101,7 @@ public final class AmneziaWgManager {
 
                 long deadline = android.os.SystemClock.elapsedRealtime() + START_TIMEOUT_MS;
                 while (android.os.SystemClock.elapsedRealtime() < deadline) {
-                    if (started == null || !started.isAlive()) {
+                    if (started == null || !isProcessAlive(started)) {
                         throw new IllegalStateException("AmneziaWG userspace process exited during startup");
                     }
                     if (isSocksReady()) {
@@ -133,7 +133,7 @@ public final class AmneziaWgManager {
             try {
                 current.destroy();
                 long deadline = android.os.SystemClock.elapsedRealtime() + 1500L;
-                while (current.isAlive() && android.os.SystemClock.elapsedRealtime() < deadline) {
+                while (isProcessAlive(current) && android.os.SystemClock.elapsedRealtime() < deadline) {
                     android.os.SystemClock.sleep(50);
                 }
                 if (current.isAlive()) {
@@ -256,6 +256,18 @@ public final class AmneziaWgManager {
         if (TextUtils.isEmpty(value) || value.trim().isEmpty()
                 || value.indexOf('\n') >= 0 || value.indexOf('\r') >= 0) {
             throw new IllegalArgumentException("Missing or invalid " + label);
+        }
+    }
+
+    private static boolean isProcessAlive(Process candidate) {
+        if (candidate == null) {
+            return false;
+        }
+        try {
+            candidate.exitValue();
+            return false;
+        } catch (IllegalThreadStateException stillRunning) {
+            return true;
         }
     }
 
