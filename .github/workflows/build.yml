@@ -97,25 +97,27 @@ jobs:
         run: |
           set -eux
           go mod tidy
+          LLVM_BIN="$ANDROID_NDK_HOME/toolchains/llvm/prebuilt/linux-x86_64/bin"
           mkdir -p "$GITHUB_WORKSPACE/TMessagesProj/src/main/jniLibs"
           build_awg() {
             abi="$1"
             arch="$2"
-            arm="${3:-}"
+            compiler="$3"
+            arm="${4:-}"
             out="$GITHUB_WORKSPACE/TMessagesProj/src/main/jniLibs/$abi"
             mkdir -p "$out"
             if [ -n "$arm" ]; then
-              GOOS=android GOARCH="$arch" GOARM="$arm" CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o "$out/libawgproxy.so" .
+              CC="$LLVM_BIN/$compiler" GOOS=android GOARCH="$arch" GOARM="$arm" CGO_ENABLED=1 go build -buildmode=pie -trimpath -ldflags="-s -w" -o "$out/libawgproxy.so" .
             else
-              GOOS=android GOARCH="$arch" CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o "$out/libawgproxy.so" .
+              CC="$LLVM_BIN/$compiler" GOOS=android GOARCH="$arch" CGO_ENABLED=1 go build -buildmode=pie -trimpath -ldflags="-s -w" -o "$out/libawgproxy.so" .
             fi
             chmod 755 "$out/libawgproxy.so"
             file "$out/libawgproxy.so"
           }
-          build_awg armeabi-v7a arm 7
-          build_awg arm64-v8a arm64
-          build_awg x86 386
-          build_awg x86_64 amd64
+          build_awg armeabi-v7a arm armv7a-linux-androideabi21-clang 7
+          build_awg arm64-v8a arm aarch64-linux-android21-clang
+          build_awg x86 386 i686-linux-android21-clang
+          build_awg x86_64 amd64 x86_64-linux-android21-clang
       - name: Build standalone APKs (universal + per-ABI)
         run: |
           ./gradlew :TMessagesProj_AppStandalone:assembleAfatStandalone \
