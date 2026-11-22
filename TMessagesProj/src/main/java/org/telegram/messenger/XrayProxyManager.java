@@ -135,19 +135,32 @@ public class XrayProxyManager {
         return deleted;
     }
 
+    private static boolean isCurrentAmneziaWg() {
+        SharedConfig.ProxyInfo proxy = SharedConfig.currentProxy;
+        return proxy != null && proxy.isXrayWireguard();
+    }
+
     public static boolean isSocksReady() {
-        return canConnect(200);
+        return isCurrentAmneziaWg()
+                ? AmneziaWgManager.isSocksReady()
+                : canConnect(200);
     }
 
     public static boolean waitForSocksReady(long timeoutMs) {
         long deadline = SystemClock.elapsedRealtime() + timeoutMs;
         while (SystemClock.elapsedRealtime() < deadline) {
-            if (isRunning() && canConnect(300)) {
+            if (isCurrentAmneziaWg()) {
+                if (AmneziaWgManager.isRunning()) {
+                    return true;
+                }
+            } else if (isRunning() && canConnect(300)) {
                 return true;
             }
             SystemClock.sleep(250);
         }
-        return isRunning() && canConnect(400);
+        return isCurrentAmneziaWg()
+                ? AmneziaWgManager.isRunning()
+                : isRunning() && canConnect(400);
     }
 
     public static void startService() {
