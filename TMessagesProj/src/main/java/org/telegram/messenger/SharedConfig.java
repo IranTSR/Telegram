@@ -66,7 +66,8 @@ public class SharedConfig {
     private final static int PROXY_SCHEMA_V5 = 5;
     private final static int PROXY_SCHEMA_V6 = 6;
     private final static int PROXY_SCHEMA_V7 = 7;
-    private final static int PROXY_CURRENT_SCHEMA_VERSION = PROXY_SCHEMA_V7;
+    private final static int PROXY_SCHEMA_V8 = 8;
+    private final static int PROXY_CURRENT_SCHEMA_VERSION = PROXY_SCHEMA_V8;
 
     public final static int PASSCODE_TYPE_PIN = 0,
             PASSCODE_TYPE_PASSWORD = 1;
@@ -442,6 +443,10 @@ public class SharedConfig {
         public String wgKeepAlive;
         public String wgPresharedKey;
         public String wgDns;
+        // Native AmneziaWG editor state and raw protocol-specific Interface properties (schema V8).
+        public boolean wgShowAmneziaProperties;
+        public boolean wgAmneziaCompatibility;
+        public String wgAmneziaProperties;
         // Xray Hysteria2 fields (schema V7).
         public String hyPassword;
         public String hySni;
@@ -527,6 +532,9 @@ public class SharedConfig {
             }
             if (this.wgDns == null) {
                 this.wgDns = "";
+            }
+            if (this.wgAmneziaProperties == null) {
+                this.wgAmneziaProperties = "";
             }
             if (this.hyPassword == null) {
                 this.hyPassword = "";
@@ -1210,6 +1218,14 @@ public class SharedConfig {
                 info.wgAllowedIps = peer.containsKey("allowedips") ? peer.get("allowedips") : "0.0.0.0/0, ::/0";
                 info.wgKeepAlive = peer.containsKey("persistentkeepalive") ? peer.get("persistentkeepalive") : "25";
                 info.wgPresharedKey = peer.containsKey("presharedkey") ? peer.get("presharedkey") : "";
+                StringBuilder awgProperties = new StringBuilder();
+                String[] awgKeys = {"jc", "jmin", "jmax", "s1", "s2", "s3", "s4", "h1", "h2", "h3", "h4", "i1", "i2", "i3", "i4", "i5", "headerprotectionkey", "contentpaddingaddition", "rekeyaftertime", "rekeytimeout", "rejectaftertime", "keepalivetimeout", "maxhandshakeattempts", "randomtrailers", "disablecookies"};
+                for (String key : awgKeys) {
+                    if (iface.containsKey(key)) {
+                        awgProperties.append(key).append(" = ").append(iface.get(key)).append('\\n');
+                    }
+                }
+                info.wgAmneziaProperties = awgProperties.toString();
                 info.normalizeXrayProtocolsFields();
                 return info;
             } catch (IllegalArgumentException e) {
@@ -1446,6 +1462,11 @@ public class SharedConfig {
                 info.hyObfsPassword = data.readString(false);
                 info.hyUpMbps = data.readString(false);
                 info.hyDownMbps = data.readString(false);
+                if (version >= PROXY_SCHEMA_V8) {
+                    info.wgShowAmneziaProperties = data.readBool(false);
+                    info.wgAmneziaCompatibility = data.readBool(false);
+                    info.wgAmneziaProperties = data.readString(false);
+                }
                 info.normalizeXrayProtocolsFields();
             }
 
@@ -1535,6 +1556,9 @@ public class SharedConfig {
             data.writeString(hyObfsPassword != null ? hyObfsPassword : "");
             data.writeString(hyUpMbps != null ? hyUpMbps : "");
             data.writeString(hyDownMbps != null ? hyDownMbps : "");
+            data.writeBool(wgShowAmneziaProperties);
+            data.writeBool(wgAmneziaCompatibility);
+            data.writeString(wgAmneziaProperties != null ? wgAmneziaProperties : "");
         }
     }
 
@@ -2699,7 +2723,10 @@ public class SharedConfig {
                     && TextUtils.equals(a.wgMtu, b.wgMtu)
                     && TextUtils.equals(a.wgKeepAlive, b.wgKeepAlive)
                     && TextUtils.equals(a.wgPresharedKey, b.wgPresharedKey)
-                    && TextUtils.equals(a.wgDns, b.wgDns);
+                    && TextUtils.equals(a.wgDns, b.wgDns)
+                    && a.wgShowAmneziaProperties == b.wgShowAmneziaProperties
+                    && a.wgAmneziaCompatibility == b.wgAmneziaCompatibility
+                    && TextUtils.equals(a.wgAmneziaProperties, b.wgAmneziaProperties);
         }
         if (a.isXrayHysteria2() && b.isXrayHysteria2()) {
             return TextUtils.equals(a.hyPassword, b.hyPassword)
