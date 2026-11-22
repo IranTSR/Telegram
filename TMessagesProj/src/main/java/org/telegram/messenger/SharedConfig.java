@@ -1226,6 +1226,9 @@ public class SharedConfig {
                     }
                 }
                 info.wgAmneziaProperties = awgProperties.toString();
+                info.wgShowAmneziaProperties = awgProperties.length() > 0;
+                info.wgAmneziaCompatibility = iface.containsKey("jc")
+                        || iface.containsKey("jmin") || iface.containsKey("jmax");
                 info.normalizeXrayProtocolsFields();
                 return info;
             } catch (IllegalArgumentException e) {

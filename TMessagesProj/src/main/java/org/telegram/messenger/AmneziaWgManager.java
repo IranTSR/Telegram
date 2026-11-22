@@ -62,7 +62,8 @@ public final class AmneziaWgManager {
             throw new IllegalArgumentException("A WireGuard proxy profile is required");
         }
         if (VpnService.prepare(context) != null) {
-            throw new IllegalStateException("Android VPN permission is required for native AmneziaWG");
+            lastError = "Android VPN permission is required for native AmneziaWG";
+            throw new IllegalStateException(lastError);
         }
 
         synchronized (LOCK) {
