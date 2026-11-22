@@ -66,7 +66,7 @@ public final class AmneziaWgManager {
         }
 
         synchronized (LOCK) {
-            if (process != null && process.isAlive() && isSocksReady()) {
+            if (process != null && isProcessAlive(process) && isSocksReady()) {
                 return;
             }
             stopInternal();
@@ -136,7 +136,7 @@ public final class AmneziaWgManager {
                 while (isProcessAlive(current) && android.os.SystemClock.elapsedRealtime() < deadline) {
                     android.os.SystemClock.sleep(50);
                 }
-                if (current.isAlive()) {
+                if (isProcessAlive(current)) {
                     FileLog.e("AmneziaWG userspace process did not stop after SIGTERM");
                 }
             } catch (Exception e) {
