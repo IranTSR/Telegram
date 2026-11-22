@@ -314,7 +314,7 @@ public class XrayProxyManager {
                 String line;
                 while ((line = reader.readLine()) != null) {
                     if (output.length() < 6000) {
-                        output.append(line).append('\\n');
+                        output.append(line).append('\n');
                     }
                 }
             }
