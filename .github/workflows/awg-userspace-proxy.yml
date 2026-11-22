@@ -30,7 +30,7 @@ jobs:
       - name: Verify Go module
         working-directory: TMessagesProj/src/main/go/awgproxy
         run: |
-          go mod download
+          go mod tidy
           go test ./...
           go vet ./...
 
