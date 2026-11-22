@@ -1907,7 +1907,7 @@ public class ProxySettingsActivity extends BaseFragment {
     }
 
     @Override
-    public void onActivityResult(int requestCode, int resultCode, Intent data) {
+    public void onActivityResultFragment(int requestCode, int resultCode, Intent data) {
         if (requestCode == REQUEST_AMNEZIA_VPN_PERMISSION && waitingForAmneziaVpnPermission) {
             waitingForAmneziaVpnPermission = false;
             if (resultCode == Activity.RESULT_OK) {
@@ -1918,7 +1918,7 @@ public class ProxySettingsActivity extends BaseFragment {
             finishFragment();
             return;
         }
-        super.onActivityResult(requestCode, resultCode, data);
+        super.onActivityResultFragment(requestCode, resultCode, data);
     }
 
     private void applyAmneziaMimic(int preset) {
