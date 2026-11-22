@@ -32,6 +32,7 @@ public final class AmneziaWgManager {
     private static Process process;
     private static volatile String lastError;
     private static volatile File configFile;
+    private static volatile String diagnosticsSummary = "Engine stopped";
 
     private AmneziaWgManager() {
     }
@@ -108,6 +109,7 @@ public final class AmneziaWgManager {
                     }
                     if (isSocksReady()) {
                         lastError = null;
+                        startDiagnosticsPolling(started);
                         FileLog.d("AmneziaWG userspace SOCKS5 ready on " + LISTEN_ADDRESS + ":" + SOCKS_PORT);
                         return;
                     }
@@ -129,6 +131,7 @@ public final class AmneziaWgManager {
     }
 
     private static void stopInternal() {
+        diagnosticsSummary = "Engine stopped";
         Process current = process;
         process = null;
         if (current != null) {
@@ -268,14 +271,24 @@ public final class AmneziaWgManager {
         }
     }
 
+    private static void startDiagnosticsPolling(Process target) {
+        diagnosticsSummary = "Engine running — checking handshake";
+        new Thread(() -> {
+            while (isProcessAlive(target)) {
+                String details = getDiagnostics();
+                if (details.contains("Handshake: received")) diagnosticsSummary = "Handshake received";
+                else if (details.contains("Handshake: not received")) diagnosticsSummary = "Waiting for handshake";
+                else if (details.contains("Diagnostics unavailable")) diagnosticsSummary = "Diagnostics unavailable";
+                else if (details.contains("Last error:")) diagnosticsSummary = "Connection error";
+                else diagnosticsSummary = "Engine running";
+                try { Thread.sleep(1500L); } catch (InterruptedException e) { Thread.currentThread().interrupt(); break; }
+            }
+            diagnosticsSummary = "Engine stopped";
+        }, "AmneziaWG-Diagnostics").start();
+    }
+
     public static String getDiagnosticsSummary() {
-        String details = getDiagnostics();
-        if (details.contains("Handshake: received")) return "Handshake received";
-        if (details.contains("Handshake: not received")) return "Waiting for handshake";
-        if (details.contains("Diagnostics unavailable")) return "Diagnostics unavailable";
-        if (details.contains("Last error:")) return "Connection error";
-        if (details.contains("Engine: stopped")) return "Engine stopped";
-        return "Checking connection";
+        return diagnosticsSummary;
     }
 
     private static String normalizeAmneziaKey(String value) {
