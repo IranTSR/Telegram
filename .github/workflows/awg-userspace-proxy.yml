@@ -1,0 +1,59 @@
+name: AmneziaWG userspace proxy validation
+
+on:
+  push:
+    branches:
+      - feature/amneziawg-userspace-proxy
+  pull_request:
+    branches:
+      - feature/amneziawg-userspace-proxy
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build-userspace-engine:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v6
+        with:
+          go-version: '1.25.0'
+          cache: true
+          cache-dependency-path: TMessagesProj/src/main/go/awgproxy/go.mod
+
+      - name: Verify Go module
+        working-directory: TMessagesProj/src/main/go/awgproxy
+        run: |
+          go mod download
+          go test ./...
+          go vet ./...
+
+      - name: Cross-build Android userspace engine
+        working-directory: TMessagesProj/src/main/go/awgproxy
+        run: |
+          set -eux
+          mkdir -p "${GITHUB_WORKSPACE}/awgproxy-dist"
+          for target in "arm64:arm64" "arm:arm" "386:386" "amd64:amd64"; do
+            arch="${target%%:*}"
+            case "$arch" in
+              arm) export GOARM=7 ;;
+              *) unset GOARM || true ;;
+            esac
+            export GOOS=android GOARCH="$arch" CGO_ENABLED=0
+            go build -trimpath -ldflags="-s -w" -o "${GITHUB_WORKSPACE}/awgproxy-dist/awgproxy-$arch" .
+          done
+          file "${GITHUB_WORKSPACE}"/awgproxy-dist/*
+
+      - name: Upload Android engine binaries
+        uses: actions/upload-artifact@v4
+        with:
+          name: awg-userspace-proxy-android
+          path: awgproxy-dist/*
+          if-no-files-found: error
+          retention-days: 14
