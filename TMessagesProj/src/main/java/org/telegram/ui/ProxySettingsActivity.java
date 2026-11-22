@@ -12,6 +12,8 @@ import android.animation.ValueAnimator;
 import android.content.ClipData;
 import android.content.ClipboardManager;
 import android.content.Context;
+import android.content.Intent;
+import android.app.Activity;
 import android.content.SharedPreferences;
 import android.graphics.Bitmap;
 import android.graphics.Canvas;
@@ -55,6 +57,7 @@ import org.telegram.messenger.SharedConfig;
 import org.telegram.messenger.XrayProxyManager;
 import org.telegram.messenger.AetherProxyManager;
 import org.telegram.messenger.AmneziaWgPresets;
+import org.telegram.messenger.AmneziaWgManager;
 import org.telegram.messenger.SvgHelper;
 import org.telegram.messenger.Utilities;
 import org.telegram.utils.proxy.WebProxyTransport;
@@ -70,7 +73,6 @@ import org.telegram.ui.Cells.HeaderCell;
 import org.telegram.ui.Cells.RadioCell;
 import org.telegram.ui.Cells.ShadowSectionCell;
 import org.telegram.ui.Cells.TextInfoPrivacyCell;
-import org.telegram.ui.Cells.TextCheckCell;
 import org.telegram.ui.Cells.TextSettingsCell;
 import org.telegram.ui.Components.CubicBezierInterpolator;
 import org.telegram.ui.Components.EditTextBoldCursor;
@@ -184,8 +186,10 @@ public class ProxySettingsActivity extends BaseFragment {
     private LinearLayout linearLayout2;
     private LinearLayout inputFieldsContainer;
     private LinearLayout amneziaOptionsContainer;
-    private TextCheckCell showAmneziaPropertiesCell;
-    private TextCheckCell amneziaCompatibilityCell;
+    private TextSettingsCell showAmneziaPropertiesCell;
+    private TextSettingsCell amneziaCompatibilityCell;
+    private boolean waitingForAmneziaVpnPermission;
+    private static final int REQUEST_AMNEZIA_VPN_PERMISSION = 9147;
     private EditTextBoldCursor amneziaPropertiesField;
     private HeaderCell headerCell;
     private ShadowSectionCell[] sectionCell = new ShadowSectionCell[3];
@@ -449,6 +453,18 @@ public class ProxySettingsActivity extends BaseFragment {
 
                     NotificationCenter.getGlobalInstance().postNotificationName(NotificationCenter.proxySettingsChanged);
 
+                    boolean shouldStartAmnezia = enabled
+                            && currentType == ProxySettings.Type.XRAY_WIREGUARD
+                            && (addingNewProxy || SharedConfig.currentProxy == currentProxyInfo);
+                    if (shouldStartAmnezia) {
+                        Intent vpnPermission = AmneziaWgManager.prepareVpnPermission(getParentActivity());
+                        if (vpnPermission != null) {
+                            waitingForAmneziaVpnPermission = true;
+                            startActivityForResult(vpnPermission, REQUEST_AMNEZIA_VPN_PERMISSION);
+                            return;
+                        }
+                        XrayProxyManager.startService();
+                    }
                     finishFragment();
                 }
             }
@@ -985,29 +1001,27 @@ public class ProxySettingsActivity extends BaseFragment {
         linearLayout2.addView(amneziaOptionsContainer, LayoutHelper.createLinear(LayoutHelper.MATCH_PARENT, LayoutHelper.WRAP_CONTENT));
         amneziaOptionsContainer.setVisibility(currentType == ProxySettings.Type.XRAY_WIREGUARD ? View.VISIBLE : View.GONE);
 
-        showAmneziaPropertiesCell = new TextCheckCell(context);
+        showAmneziaPropertiesCell = new TextSettingsCell(context);
         showAmneziaPropertiesCell.setBackground(Theme.getSelectorDrawable(true));
-        showAmneziaPropertiesCell.setTextAndCheck("Show Amnezia properties",
-                currentProxyInfo != null && currentProxyInfo.wgShowAmneziaProperties, true);
+        showAmneziaPropertiesCell.setText("Show Amnezia properties", true);
         showAmneziaPropertiesCell.setOnClickListener(v -> {
             if (currentProxyInfo == null) return;
             currentProxyInfo.wgShowAmneziaProperties = !currentProxyInfo.wgShowAmneziaProperties;
-            showAmneziaPropertiesCell.setTextAndCheck("Show Amnezia properties",
-                    currentProxyInfo.wgShowAmneziaProperties, true);
             updateAmneziaEditorVisibility();
         });
         amneziaOptionsContainer.addView(showAmneziaPropertiesCell,
                 LayoutHelper.createLinear(LayoutHelper.MATCH_PARENT, 50));
 
-        amneziaCompatibilityCell = new TextCheckCell(context);
+        amneziaCompatibilityCell = new TextSettingsCell(context);
         amneziaCompatibilityCell.setBackground(Theme.getSelectorDrawable(true));
-        amneziaCompatibilityCell.setTextAndCheck("Enable Amnezia compatibility",
-                currentProxyInfo != null && currentProxyInfo.wgAmneziaCompatibility, true);
+        amneziaCompatibilityCell.setText("Enable Amnezia compatibility", true);
         amneziaCompatibilityCell.setOnClickListener(v -> {
             if (currentProxyInfo == null) return;
-            currentProxyInfo.wgAmneziaCompatibility = !currentProxyInfo.wgAmneziaCompatibility;
-            amneziaCompatibilityCell.setTextAndCheck("Enable Amnezia compatibility",
-                    currentProxyInfo.wgAmneziaCompatibility, true);
+            String updated = AmneziaWgPresets.enableCompatibility(amneziaPropertiesField.getText().toString());
+            amneziaPropertiesField.setText(updated);
+            amneziaPropertiesField.setSelection(amneziaPropertiesField.length());
+            currentProxyInfo.wgAmneziaProperties = updated;
+            currentProxyInfo.wgAmneziaCompatibility = true;
         });
         amneziaOptionsContainer.addView(amneziaCompatibilityCell,
                 LayoutHelper.createLinear(LayoutHelper.MATCH_PARENT, 50));
@@ -1892,6 +1906,21 @@ public class ProxySettingsActivity extends BaseFragment {
         }
     }
 
+    @Override
+    public void onActivityResult(int requestCode, int resultCode, Intent data) {
+        if (requestCode == REQUEST_AMNEZIA_VPN_PERMISSION && waitingForAmneziaVpnPermission) {
+            waitingForAmneziaVpnPermission = false;
+            if (resultCode == Activity.RESULT_OK) {
+                XrayProxyManager.startService();
+            } else {
+                Toast.makeText(getParentActivity(), "VPN permission is required for AmneziaWG", Toast.LENGTH_LONG).show();
+            }
+            finishFragment();
+            return;
+        }
+        super.onActivityResult(requestCode, resultCode, data);
+    }
+
     private void applyAmneziaMimic(int preset) {
         if (amneziaPropertiesField == null) return;
         String updated = AmneziaWgPresets.apply(amneziaPropertiesField.getText().toString(), preset);
@@ -1900,9 +1929,6 @@ public class ProxySettingsActivity extends BaseFragment {
         if (currentProxyInfo != null) {
             currentProxyInfo.wgAmneziaProperties = updated;
             currentProxyInfo.wgAmneziaCompatibility = true;
-            if (amneziaCompatibilityCell != null) {
-                amneziaCompatibilityCell.setTextAndCheck("Enable Amnezia compatibility", true, true);
-            }
         }
     }
 

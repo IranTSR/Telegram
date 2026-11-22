@@ -12,6 +12,22 @@ public final class AmneziaWgPresets {
     private AmneziaWgPresets() {
     }
 
+    public static String enableCompatibility(String existing) {
+        LinkedHashMap<String, String> values = parse(existing);
+        putDefault(values, "jc", "4");
+        putDefault(values, "jmin", "40");
+        putDefault(values, "jmax", "70");
+        putDefault(values, "s1", "0");
+        putDefault(values, "s2", "0");
+        putDefault(values, "s3", "0");
+        putDefault(values, "s4", "0");
+        putDefault(values, "h1", "1");
+        putDefault(values, "h2", "2");
+        putDefault(values, "h3", "3");
+        putDefault(values, "h4", "4");
+        return serialize(values);
+    }
+
     public static String apply(String existing, int preset) {
         LinkedHashMap<String, String> values = parse(existing);
         putDefault(values, "jc", "4");
