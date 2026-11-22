@@ -25,6 +25,7 @@ public final class AmneziaWgManager {
     private static final AtomicBoolean RUNNING = new AtomicBoolean(false);
 
     private static GoBackend backend;
+    private static volatile String lastError;
     private static final Tunnel TUNNEL = new Tunnel() {
         @Override
         public String getName() {
@@ -44,6 +45,10 @@ public final class AmneziaWgManager {
         return RUNNING.get();
     }
 
+    public static String getLastError() {
+        return lastError;
+    }
+
     /**
      * Returns the Android VPN consent intent, or null when permission is already granted.
      * The caller must launch this intent from a foreground Activity.
@@ -61,17 +66,24 @@ public final class AmneziaWgManager {
         }
 
         synchronized (LOCK) {
-            if (backend == null) {
-                backend = new GoBackend(context.getApplicationContext());
+            try {
+                if (backend == null) {
+                    backend = new GoBackend(context.getApplicationContext());
+                }
+                Config config = Config.parse(new BufferedReader(new StringReader(buildConfig(context, info))));
+                backend.setState(TUNNEL, Tunnel.State.UP, config);
+                RUNNING.set(backend.getState(TUNNEL) == Tunnel.State.UP);
+                if (!RUNNING.get()) {
+                    throw new IllegalStateException("AmneziaWG backend did not enter UP state");
+                }
+                lastError = null;
+                FileLog.d("AmneziaWG: native tunnel started for Telegram package " + context.getPackageName()
+                        + ", version " + backend.getVersion());
+            } catch (Exception e) {
+                RUNNING.set(false);
+                lastError = e.getMessage() != null ? e.getMessage() : e.getClass().getSimpleName();
+                throw e;
             }
-            Config config = Config.parse(new BufferedReader(new StringReader(buildConfig(context, info))));
-            backend.setState(TUNNEL, Tunnel.State.UP, config);
-            RUNNING.set(backend.getState(TUNNEL) == Tunnel.State.UP);
-            if (!RUNNING.get()) {
-                throw new IllegalStateException("AmneziaWG backend did not enter UP state");
-            }
-            FileLog.d("AmneziaWG: native tunnel started for Telegram package " + context.getPackageName()
-                    + ", version " + backend.getVersion());
         }
     }
 
@@ -108,6 +120,7 @@ public final class AmneziaWgManager {
         add(out, "MTU", info.wgMtu);
         // Explicit allow-list: never create a device-wide VPN from a Telegram proxy.
         add(out, "IncludedApplications", context.getPackageName());
+        appendAmneziaProperties(out, info);
 
         out.append("\n[Peer]\n");
         add(out, "PublicKey", info.wgPublicKey);
@@ -118,6 +131,63 @@ public final class AmneziaWgManager {
         add(out, "PersistentKeepalive", TextUtils.isEmpty(info.wgKeepAlive)
                 ? "25" : info.wgKeepAlive);
         return out.toString();
+    }
+
+    private static void appendAmneziaProperties(StringBuilder out, SharedConfig.ProxyInfo info) {
+        java.util.HashMap<String, String> values = new java.util.HashMap<>();
+        if (info.wgAmneziaCompatibility) {
+            values.put("jc", "4");
+            values.put("jmin", "40");
+            values.put("jmax", "70");
+            values.put("s1", "0");
+            values.put("s2", "0");
+            values.put("s3", "0");
+            values.put("s4", "0");
+            values.put("h1", "1");
+            values.put("h2", "2");
+            values.put("h3", "3");
+            values.put("h4", "4");
+        }
+        if (!TextUtils.isEmpty(info.wgAmneziaProperties)) {
+            String[] lines = info.wgAmneziaProperties.split("\\r?\\n");
+            for (String line : lines) {
+                int equals = line.indexOf('=');
+                if (equals <= 0) {
+                    continue;
+                }
+                String key = line.substring(0, equals).trim().toLowerCase(java.util.Locale.US);
+                String value = line.substring(equals + 1).trim();
+                if (isAllowedAmneziaKey(key) && !TextUtils.isEmpty(value)) {
+                    values.put(key, value);
+                }
+            }
+        }
+        String[] order = {"jc", "jmin", "jmax", "s1", "s2", "s3", "s4", "h1", "h2", "h3", "h4",
+                "i1", "i2", "i3", "i4", "i5", "headerprotectionkey", "contentpaddingaddition",
+                "rekeyaftertime", "rekeytimeout", "rejectaftertime", "keepalivetimeout",
+                "maxhandshakeattempts", "randomtrailers", "disablecookies"};
+        for (String key : order) {
+            String value = values.get(key);
+            if (!TextUtils.isEmpty(value)) {
+                add(out, key, value);
+            }
+        }
+    }
+
+    private static boolean isAllowedAmneziaKey(String key) {
+        switch (key) {
+            case "jc": case "jmin": case "jmax":
+            case "s1": case "s2": case "s3": case "s4":
+            case "h1": case "h2": case "h3": case "h4":
+            case "i1": case "i2": case "i3": case "i4": case "i5":
+            case "headerprotectionkey": case "contentpaddingaddition":
+            case "rekeyaftertime": case "rekeytimeout": case "rejectaftertime":
+            case "keepalivetimeout": case "maxhandshakeattempts":
+            case "randomtrailers": case "disablecookies":
+                return true;
+            default:
+                return false;
+        }
     }
 
     private static void require(String value, String label) {

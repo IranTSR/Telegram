@@ -64,6 +64,8 @@ public class XrayProxyService extends Service {
                     AmneziaWgManager.stop();
                     XrayProxyManager.ensureRunning(proxy);
                 }
+            } catch (Exception e) {
+                FileLog.e("Proxy engine start failed", e);
             } finally {
                 XrayProxyManager.setProgressListener(null);
                 boolean wireguard = SharedConfig.currentProxy != null && SharedConfig.currentProxy.isXrayWireguard();
@@ -74,7 +76,8 @@ public class XrayProxyService extends Service {
                     XrayProxyManager.markRunning();
                     updateNotificationRunning();
                 } else {
-                    XrayProxyManager.markFailed("socks not ready");
+                    String error = wireguard ? AmneziaWgManager.getLastError() : "socks not ready";
+                    XrayProxyManager.markFailed(error != null ? error : "proxy engine failed");
                     updateNotificationFailed();
                 }
             }
