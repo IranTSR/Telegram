@@ -132,9 +132,12 @@ public final class AmneziaWgManager {
         if (current != null) {
             try {
                 current.destroy();
-                if (!current.waitFor(1500, java.util.concurrent.TimeUnit.MILLISECONDS)) {
-                    current.destroyForcibly();
-                    current.waitFor(1500, java.util.concurrent.TimeUnit.MILLISECONDS);
+                long deadline = android.os.SystemClock.elapsedRealtime() + 1500L;
+                while (current.isAlive() && android.os.SystemClock.elapsedRealtime() < deadline) {
+                    android.os.SystemClock.sleep(50);
+                }
+                if (current.isAlive()) {
+                    FileLog.e("AmneziaWG userspace process did not stop after SIGTERM");
                 }
             } catch (Exception e) {
                 FileLog.e("AmneziaWG userspace process stop failed", e);
