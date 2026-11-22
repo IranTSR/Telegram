@@ -4,7 +4,9 @@ on:
   push:
     branches:
       - fix/xray-protocols-connection
+      - feature/amneziawg-userspace-proxy
       - feature/amneziawg-native-engine
+      - feature/amneziawg-userspace-proxy
   pull_request:
     branches:
       - fix/xray-protocols-connection
@@ -83,6 +85,37 @@ jobs:
           file "$GITHUB_WORKSPACE/xray-prebuilt/armeabi-v7a/libxray.so" "$GITHUB_WORKSPACE/xray-prebuilt/x86/libxray.so"
           echo "XRAY_PREBUILT_DIR=$GITHUB_WORKSPACE/xray-prebuilt" >> $GITHUB_ENV
 
+      - name: Build AmneziaWG userspace SOCKS5 engine for Android
+        uses: actions/setup-go@v6
+        with:
+          go-version: '1.25.0'
+          cache: true
+          cache-dependency-path: TMessagesProj/src/main/go/awgproxy/go.mod
+
+      - name: Compile AmneziaWG userspace engine for all Android ABIs
+        working-directory: TMessagesProj/src/main/go/awgproxy
+        run: |
+          set -eux
+          go mod tidy
+          mkdir -p "$GITHUB_WORKSPACE/TMessagesProj/src/main/jniLibs"
+          build_awg() {
+            abi="$1"
+            arch="$2"
+            arm="${3:-}"
+            out="$GITHUB_WORKSPACE/TMessagesProj/src/main/jniLibs/$abi"
+            mkdir -p "$out"
+            if [ -n "$arm" ]; then
+              GOOS=android GOARCH="$arch" GOARM="$arm" CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o "$out/libawgproxy.so" .
+            else
+              GOOS=android GOARCH="$arch" CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o "$out/libawgproxy.so" .
+            fi
+            chmod 755 "$out/libawgproxy.so"
+            file "$out/libawgproxy.so"
+          }
+          build_awg armeabi-v7a arm 7
+          build_awg arm64-v8a arm64
+          build_awg x86 386
+          build_awg x86_64 amd64
       - name: Build standalone APKs (universal + per-ABI)
         run: |
           ./gradlew :TMessagesProj_AppStandalone:assembleAfatStandalone \
