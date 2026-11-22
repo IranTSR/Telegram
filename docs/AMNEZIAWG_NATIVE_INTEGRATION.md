@@ -47,3 +47,14 @@ Target branch: `feature/amneziawg-native-engine`
 - Android allows only one active VPN service per user/profile. Starting AmneziaWG may replace another app's VPN; surface this limitation clearly.
 - Keep the existing Xray protocols unchanged.
 - Do not claim a successful build or working tunnel until CI and device tests confirm it.
+
+## Verified WG Tunnel Mimic behavior
+
+Reference source: `wgtunnel/android`, commit `76da138c8b6940b87940ed9ea7398b53189a4070`, file `EditableInterface.kt`.
+
+- Each Mimic action first applies the upstream Amnezia base defaults (JC=4, Jmin=40, Jmax=70; S1-S4=0; H1-H4=1,2,3,4 where those fields are empty).
+- QUIC sets I1 to the upstream QUIC Initial sample and I2 to its follow-up frame.
+- DNS sets I1 to the upstream DNS query sample and clears I2.
+- SIP sets I1 to the upstream SIP INVITE sample and I2 to the upstream SIP 100 Trying sample.
+- WG Tunnel documents all three presets as compatible with standard WireGuard servers. Preserve the exact byte strings from the pinned source rather than recreating or paraphrasing them.
+- The advanced-properties model also includes AmneziaWG 3.0+ fields (HeaderProtectionKey, ContentPaddingAddition and rekey/keepalive/handshake controls) and 3.1 fields (RandomTrailers, DisableCookies). Their availability must be gated by the actual selected engine/protocol version.
