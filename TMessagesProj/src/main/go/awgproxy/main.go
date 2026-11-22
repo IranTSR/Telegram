@@ -18,7 +18,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/amnezia-vpn/amneziawg-go/v3/outline"
+	"github.com/amnezia-vpn/amneziawg-go/v3/conn"
+	"github.com/amnezia-vpn/amneziawg-go/v3/device"
+	"github.com/amnezia-vpn/amneziawg-go/v3/tun/netstack"
 )
 
 type peerConfig struct {
@@ -28,6 +30,20 @@ type peerConfig struct {
 	AllowedIPs    []string `json:"allowedIps"`
 	Keepalive     int      `json:"keepalive"`
 }
+
+type streamDialer interface {
+	DialStream(context.Context, string) (net.Conn, error)
+}
+
+type userspaceDialer struct {
+	network *netstack.Net
+}
+
+func (d *userspaceDialer) DialStream(ctx context.Context, address string) (net.Conn, error) {
+	return d.network.DialContext(ctx, "tcp", address)
+}
+
+var activeDevice *device.Device
 
 type profile struct {
 	PrivateKey string            `json:"privateKey"`
@@ -55,12 +71,19 @@ func main() {
 		log.Fatal(err)
 	}
 
-	dialer, err := outline.NewStreamDialer(outline.DialerOptions{
-		Ipc: ipc, Prefixes: prefixes, Mtu: mtu, Dns: dns,
-	})
+	tunDevice, network, err := netstack.CreateNetTUN(prefixesToAddresses(prefixes), dns, mtu)
 	if err != nil {
-		log.Fatalf("initialize AmneziaWG userspace netstack: %v", err)
+		log.Fatalf("create userspace network stack: %v", err)
 	}
+	activeDevice = device.NewDevice(tunDevice, conn.NewDefaultBind(),
+		device.NewLogger(device.LogLevelError, "(telegram-awg) "))
+	if err := activeDevice.IpcSet(ipc); err != nil {
+		log.Fatalf("configure AmneziaWG device: %v", err)
+	}
+	if err := activeDevice.Up(); err != nil {
+		log.Fatalf("start AmneziaWG device: %v", err)
+	}
+	dialer := &userspaceDialer{network: network}
 
 	listener, err := net.Listen("tcp", *listenAddress)
 	if err != nil {
@@ -190,7 +213,15 @@ func buildDeviceConfig(cfg profile) (string, []netip.Prefix, []netip.Addr, int, 
 	return b.String(), prefixes, dns, cfg.MTU, nil
 }
 
-func handleSocks(client net.Conn, dialer *outline.StreamDialer) {
+func prefixesToAddresses(prefixes []netip.Prefix) []netip.Addr {
+	addresses := make([]netip.Addr, 0, len(prefixes))
+	for _, prefix := range prefixes {
+		addresses = append(addresses, prefix.Addr())
+	}
+	return addresses
+}
+
+func handleSocks(client net.Conn, dialer streamDialer) {
 	defer client.Close()
 	_ = client.SetDeadline(time.Now().Add(15 * time.Second))
 
