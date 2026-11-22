@@ -237,11 +237,22 @@ public class XrayProxyManager {
             if (xrayProcess != null && xrayProcess.isAlive() && TextUtils.equals(lastConfigHash, configHash)) {
                 return;
             }
-            stopProcessInternal();
-            // Never run two engines at once.
-            AetherProxyManager.stopProcess();
             File configFile = new File(xrayDir, "config.json");
             writeConfig(configFile, config);
+
+            // Validate the generated profile with the exact bundled/downloaded core
+            // before stopping a working proxy. This catches protocol-specific JSON
+            // schema errors (VMess, Trojan, Shadowsocks, WireGuard and Hysteria2).
+            String configError = validateConfig(binFile, configFile, xrayDir);
+            if (configError != null) {
+                markFailed(configError);
+                return;
+            }
+
+            // Never run two engines at once. Wait for the previous process to exit
+            // before binding the shared SOCKS port again.
+            stopProcessInternal();
+            AetherProxyManager.stopProcess();
             ProcessBuilder builder = new ProcessBuilder(binFile.getAbsolutePath(), "run", "-c", configFile.getAbsolutePath());
             builder.directory(xrayDir);
             builder.redirectErrorStream(true);
@@ -265,14 +276,68 @@ public class XrayProxyManager {
     }
 
     private static void stopProcessInternal() {
-        if (xrayProcess != null) {
+        Process process = xrayProcess;
+        xrayProcess = null;
+        if (process != null) {
             try {
-                xrayProcess.destroy();
-            } catch (Exception ignored) {
+                process.destroy();
+                // Process.destroy() is asynchronous on Android. Starting a second
+                // Xray instance before the first releases 127.0.0.1:1081 causes the
+                // new core to fail with "address already in use".
+                process.waitFor();
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                FileLog.e("Xray: interrupted while stopping previous core", e);
+            } catch (Exception e) {
+                FileLog.e("Xray: failed to stop previous core", e);
             }
-            xrayProcess = null;
         }
+        lastConfigHash = null;
         setState(STATE_IDLE, null);
+    }
+
+    private static String validateConfig(File binFile, File configFile, File workingDir) {
+        Process validator = null;
+        StringBuilder output = new StringBuilder();
+        try {
+            ProcessBuilder builder = new ProcessBuilder(binFile.getAbsolutePath(),
+                    "run", "-test", "-c", configFile.getAbsolutePath());
+            builder.directory(workingDir);
+            builder.redirectErrorStream(true);
+            validator = builder.start();
+            try (BufferedReader reader = new BufferedReader(
+                    new InputStreamReader(validator.getInputStream()))) {
+                String line;
+                while ((line = reader.readLine()) != null) {
+                    if (output.length() < 6000) {
+                        output.append(line).append('\\n');
+                    }
+                }
+            }
+            int exitCode = validator.waitFor();
+            if (exitCode != 0) {
+                String details = output.toString().trim();
+                String error = "Xray rejected generated config (exit " + exitCode + ")"
+                        + (TextUtils.isEmpty(details) ? "" : ": " + details);
+                FileLog.e(error);
+                return error;
+            }
+            if (BuildVars.LOGS_ENABLED && output.length() > 0) {
+                FileLog.d("Xray config validation: " + output.toString().trim());
+            }
+            return null;
+        } catch (Exception e) {
+            FileLog.e("Xray: config validation failed", e);
+            return "Xray config validation failed: " + e.getMessage();
+        } finally {
+            if (validator != null && validator.isAlive()) {
+                try {
+                    validator.destroy();
+                    validator.waitFor();
+                } catch (Exception ignored) {
+                }
+            }
+        }
     }
 
     private static void startLogReader(final InputStream inputStream) {
@@ -280,8 +345,14 @@ public class XrayProxyManager {
             try (BufferedReader reader = new BufferedReader(new InputStreamReader(inputStream))) {
                 String line;
                 while ((line = reader.readLine()) != null) {
+                    String lower = line.toLowerCase(Locale.US);
                     if (BuildVars.LOGS_ENABLED) {
                         FileLog.d("xray: " + line);
+                    } else if (lower.contains("error") || lower.contains("failed")
+                            || lower.contains("warning") || lower.contains("panic")
+                            || lower.contains("fatal")) {
+                        // Keep actionable core errors even in normal release builds.
+                        FileLog.e("xray: " + line);
                     }
                 }
             } catch (Exception e) {
