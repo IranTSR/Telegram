@@ -188,8 +188,6 @@ public class ProxySettingsActivity extends BaseFragment {
     private LinearLayout amneziaOptionsContainer;
     private TextSettingsCell showAmneziaPropertiesCell;
     private TextSettingsCell amneziaCompatibilityCell;
-    private boolean waitingForAmneziaVpnPermission;
-    private static final int REQUEST_AMNEZIA_VPN_PERMISSION = 9147;
     private EditTextBoldCursor amneziaPropertiesField;
     private HeaderCell headerCell;
     private ShadowSectionCell[] sectionCell = new ShadowSectionCell[3];
@@ -457,12 +455,8 @@ public class ProxySettingsActivity extends BaseFragment {
                             && currentType == ProxySettings.Type.XRAY_WIREGUARD
                             && (addingNewProxy || SharedConfig.currentProxy == currentProxyInfo);
                     if (shouldStartAmnezia) {
-                        Intent vpnPermission = AmneziaWgManager.prepareVpnPermission(getParentActivity());
-                        if (vpnPermission != null) {
-                            waitingForAmneziaVpnPermission = true;
-                            startActivityForResult(vpnPermission, REQUEST_AMNEZIA_VPN_PERMISSION);
-                            return;
-                        }
+                        // AmneziaWG now runs as an in-process userspace SOCKS5 proxy;
+                        // it does not request Android VPN consent or create a system VPN.
                         XrayProxyManager.startService();
                     }
                     finishFragment();
@@ -1904,21 +1898,6 @@ public class ProxySettingsActivity extends BaseFragment {
             }
             checkShareDone(animated);
         }
-    }
-
-    @Override
-    public void onActivityResultFragment(int requestCode, int resultCode, Intent data) {
-        if (requestCode == REQUEST_AMNEZIA_VPN_PERMISSION && waitingForAmneziaVpnPermission) {
-            waitingForAmneziaVpnPermission = false;
-            if (resultCode == Activity.RESULT_OK) {
-                XrayProxyManager.startService();
-            } else {
-                Toast.makeText(getParentActivity(), "VPN permission is required for AmneziaWG", Toast.LENGTH_LONG).show();
-            }
-            finishFragment();
-            return;
-        }
-        super.onActivityResultFragment(requestCode, resultCode, data);
     }
 
     private void applyAmneziaMimic(int preset) {
