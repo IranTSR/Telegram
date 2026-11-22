@@ -1314,6 +1314,15 @@ public class SharedConfig {
                         if (!TextUtils.isEmpty(wgDns)) {
                             conf.append("DNS = ").append(wgDns).append("\n");
                         }
+                        if (!TextUtils.isEmpty(wgMtu)) {
+                            conf.append("MTU = ").append(wgMtu).append("\n");
+                        }
+                        if (!TextUtils.isEmpty(wgAmneziaProperties)) {
+                            conf.append(wgAmneziaProperties);
+                            if (!wgAmneziaProperties.endsWith("\n")) {
+                                conf.append("\n");
+                            }
+                        }
                         conf.append("\n[Peer]\n");
                         conf.append("PublicKey = ").append(wgPublicKey).append("\n");
                         conf.append("Endpoint = ").append(wgEndpoint).append("\n");
