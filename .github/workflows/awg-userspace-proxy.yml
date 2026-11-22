@@ -34,22 +34,13 @@ jobs:
           go test ./...
           go vet ./...
 
-      - name: Cross-build Android userspace engine
+      - name: Cross-build Android arm64 userspace engine
         working-directory: TMessagesProj/src/main/go/awgproxy
         run: |
           set -eux
-          mkdir -p "${GITHUB_WORKSPACE}/awgproxy-dist"
-          for target in "arm64:arm64" "arm:arm" "386:386" "amd64:amd64"; do
-            arch="${target%%:*}"
-            case "$arch" in
-              arm) export GOARM=7 ;;
-              *) unset GOARM || true ;;
-            esac
-            export GOOS=android GOARCH="$arch" CGO_ENABLED=0
-            go build -trimpath -ldflags="-s -w" -o "${GITHUB_WORKSPACE}/awgproxy-dist/awgproxy-$arch" .
-          done
-          file "${GITHUB_WORKSPACE}"/awgproxy-dist/*
-
+          mkdir -p "$GITHUB_WORKSPACE/awgproxy-dist"
+          GOOS=android GOARCH=arm64 CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o "$GITHUB_WORKSPACE/awgproxy-dist/awgproxy-arm64" .
+          file "$GITHUB_WORKSPACE/awgproxy-dist/awgproxy-arm64"
       - name: Upload Android engine binaries
         uses: actions/upload-artifact@v4
         with:
