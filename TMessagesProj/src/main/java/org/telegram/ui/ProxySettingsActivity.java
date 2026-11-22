@@ -12,6 +12,8 @@ import android.animation.ValueAnimator;
 import android.content.ClipData;
 import android.content.ClipboardManager;
 import android.content.Context;
+import android.content.Intent;
+import android.app.Activity;
 import android.content.SharedPreferences;
 import android.graphics.Bitmap;
 import android.graphics.Canvas;
@@ -54,6 +56,8 @@ import org.telegram.messenger.R;
 import org.telegram.messenger.SharedConfig;
 import org.telegram.messenger.XrayProxyManager;
 import org.telegram.messenger.AetherProxyManager;
+import org.telegram.messenger.AmneziaWgPresets;
+import org.telegram.messenger.AmneziaWgManager;
 import org.telegram.messenger.SvgHelper;
 import org.telegram.messenger.Utilities;
 import org.telegram.utils.proxy.WebProxyTransport;
@@ -181,6 +185,12 @@ public class ProxySettingsActivity extends BaseFragment {
     private ScrollView scrollView;
     private LinearLayout linearLayout2;
     private LinearLayout inputFieldsContainer;
+    private LinearLayout amneziaOptionsContainer;
+    private TextSettingsCell showAmneziaPropertiesCell;
+    private TextSettingsCell amneziaCompatibilityCell;
+    private boolean waitingForAmneziaVpnPermission;
+    private static final int REQUEST_AMNEZIA_VPN_PERMISSION = 9147;
+    private EditTextBoldCursor amneziaPropertiesField;
     private HeaderCell headerCell;
     private ShadowSectionCell[] sectionCell = new ShadowSectionCell[3];
     private TextInfoPrivacyCell[] bottomCells = new TextInfoPrivacyCell[3];
@@ -388,6 +398,7 @@ public class ProxySettingsActivity extends BaseFragment {
                         currentProxyInfo.wgKeepAlive = inputFields[FIELD_WG_KEEPALIVE].getText().toString();
                         currentProxyInfo.wgPresharedKey = inputFields[FIELD_WG_PRESHARED_KEY].getText().toString();
                         currentProxyInfo.wgDns = inputFields[FIELD_WG_DNS].getText().toString();
+                        currentProxyInfo.wgAmneziaProperties = amneziaPropertiesField.getText().toString();
                         currentProxyInfo.normalizeXrayProtocolsFields();
                     } else if (currentType == ProxySettings.Type.XRAY_HYSTERIA2) {
                         currentProxyInfo.hyPassword = inputFields[FIELD_HY_PASSWORD].getText().toString();
@@ -442,6 +453,18 @@ public class ProxySettingsActivity extends BaseFragment {
 
                     NotificationCenter.getGlobalInstance().postNotificationName(NotificationCenter.proxySettingsChanged);
 
+                    boolean shouldStartAmnezia = enabled
+                            && currentType == ProxySettings.Type.XRAY_WIREGUARD
+                            && (addingNewProxy || SharedConfig.currentProxy == currentProxyInfo);
+                    if (shouldStartAmnezia) {
+                        Intent vpnPermission = AmneziaWgManager.prepareVpnPermission(getParentActivity());
+                        if (vpnPermission != null) {
+                            waitingForAmneziaVpnPermission = true;
+                            startActivityForResult(vpnPermission, REQUEST_AMNEZIA_VPN_PERMISSION);
+                            return;
+                        }
+                        XrayProxyManager.startService();
+                    }
                     finishFragment();
                 }
             }
@@ -972,6 +995,73 @@ public class ProxySettingsActivity extends BaseFragment {
                 return false;
             });
         }
+
+        amneziaOptionsContainer = new LinearLayout(context);
+        amneziaOptionsContainer.setOrientation(LinearLayout.VERTICAL);
+        linearLayout2.addView(amneziaOptionsContainer, LayoutHelper.createLinear(LayoutHelper.MATCH_PARENT, LayoutHelper.WRAP_CONTENT));
+        amneziaOptionsContainer.setVisibility(currentType == ProxySettings.Type.XRAY_WIREGUARD ? View.VISIBLE : View.GONE);
+
+        showAmneziaPropertiesCell = new TextSettingsCell(context);
+        showAmneziaPropertiesCell.setBackground(Theme.getSelectorDrawable(true));
+        showAmneziaPropertiesCell.setText("Show Amnezia properties", true);
+        showAmneziaPropertiesCell.setOnClickListener(v -> {
+            if (currentProxyInfo == null) return;
+            currentProxyInfo.wgShowAmneziaProperties = !currentProxyInfo.wgShowAmneziaProperties;
+            updateAmneziaEditorVisibility();
+        });
+        amneziaOptionsContainer.addView(showAmneziaPropertiesCell,
+                LayoutHelper.createLinear(LayoutHelper.MATCH_PARENT, 50));
+
+        amneziaCompatibilityCell = new TextSettingsCell(context);
+        amneziaCompatibilityCell.setBackground(Theme.getSelectorDrawable(true));
+        amneziaCompatibilityCell.setText("Enable Amnezia compatibility", true);
+        amneziaCompatibilityCell.setOnClickListener(v -> {
+            if (currentProxyInfo == null) return;
+            String updated = AmneziaWgPresets.enableCompatibility(amneziaPropertiesField.getText().toString());
+            amneziaPropertiesField.setText(updated);
+            amneziaPropertiesField.setSelection(amneziaPropertiesField.length());
+            currentProxyInfo.wgAmneziaProperties = updated;
+            currentProxyInfo.wgAmneziaCompatibility = true;
+        });
+        amneziaOptionsContainer.addView(amneziaCompatibilityCell,
+                LayoutHelper.createLinear(LayoutHelper.MATCH_PARENT, 50));
+
+        TextSettingsCell mimicQuicCell = new TextSettingsCell(context);
+        mimicQuicCell.setBackground(Theme.getSelectorDrawable(true));
+        mimicQuicCell.setText("Mimic QUIC", true);
+        mimicQuicCell.setOnClickListener(v -> applyAmneziaMimic(AmneziaWgPresets.QUIC));
+        amneziaOptionsContainer.addView(mimicQuicCell,
+                LayoutHelper.createLinear(LayoutHelper.MATCH_PARENT, 50));
+
+        TextSettingsCell mimicDnsCell = new TextSettingsCell(context);
+        mimicDnsCell.setBackground(Theme.getSelectorDrawable(true));
+        mimicDnsCell.setText("Mimic DNS", true);
+        mimicDnsCell.setOnClickListener(v -> applyAmneziaMimic(AmneziaWgPresets.DNS));
+        amneziaOptionsContainer.addView(mimicDnsCell,
+                LayoutHelper.createLinear(LayoutHelper.MATCH_PARENT, 50));
+
+        TextSettingsCell mimicSipCell = new TextSettingsCell(context);
+        mimicSipCell.setBackground(Theme.getSelectorDrawable(true));
+        mimicSipCell.setText("Mimic SIP", false);
+        mimicSipCell.setOnClickListener(v -> applyAmneziaMimic(AmneziaWgPresets.SIP));
+        amneziaOptionsContainer.addView(mimicSipCell,
+                LayoutHelper.createLinear(LayoutHelper.MATCH_PARENT, 50));
+
+        amneziaPropertiesField = new EditTextBoldCursor(context);
+        amneziaPropertiesField.setTextSize(TypedValue.COMPLEX_UNIT_DIP, 14);
+        amneziaPropertiesField.setTextColor(Theme.getColor(Theme.key_windowBackgroundWhiteBlackText));
+        amneziaPropertiesField.setHintTextColor(Theme.getColor(Theme.key_windowBackgroundWhiteHintText));
+        amneziaPropertiesField.setHint("JC = 4\\nJmin = 40\\nJmax = 70\\nS1 = 0\\nH1 = 1\\nI1 = <b 0x...>");
+        amneziaPropertiesField.setSingleLine(false);
+        amneziaPropertiesField.setMinLines(3);
+        amneziaPropertiesField.setMaxLines(8);
+        amneziaPropertiesField.setGravity(Gravity.TOP | (LocaleController.isRTL ? Gravity.RIGHT : Gravity.LEFT));
+        amneziaPropertiesField.setInputType(InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_FLAG_MULTI_LINE | InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS);
+        amneziaPropertiesField.setText(currentProxyInfo != null ? currentProxyInfo.wgAmneziaProperties : "");
+        amneziaPropertiesField.setPadding(AndroidUtilities.dp(16), AndroidUtilities.dp(12), AndroidUtilities.dp(16), AndroidUtilities.dp(12));
+        amneziaOptionsContainer.addView(amneziaPropertiesField,
+                LayoutHelper.createLinear(LayoutHelper.MATCH_PARENT, LayoutHelper.WRAP_CONTENT, 1, 8, 1, 8));
+        updateAmneziaEditorVisibility();
 
         for (int i = 0; i < 3; i++) {
             bottomCells[i] = new TextInfoPrivacyCell(context);
@@ -1699,6 +1789,10 @@ public class ProxySettingsActivity extends BaseFragment {
             boolean isVmess = currentType == ProxySettings.Type.XRAY_VMESS;
             boolean isTrojan = currentType == ProxySettings.Type.XRAY_TROJAN;
             boolean isAether = currentType == ProxySettings.Type.AETHER;
+            boolean isWireGuard = currentType == ProxySettings.Type.XRAY_WIREGUARD;
+            if (amneziaOptionsContainer != null) {
+                amneziaOptionsContainer.setVisibility(isWireGuard ? View.VISIBLE : View.GONE);
+            }
             // Aether needs no server address/port: the engine dials Cloudflare itself.
             ((View) inputFields[FIELD_IP].getParent()).setVisibility(isAether ? View.GONE : View.VISIBLE);
             if (currentType == ProxySettings.Type.SOCKS5) {
@@ -1809,6 +1903,38 @@ public class ProxySettingsActivity extends BaseFragment {
                 typeCell[a].setChecked(currentType == ProxySettings.intToType(a), animated);
             }
             checkShareDone(animated);
+        }
+    }
+
+    @Override
+    public void onActivityResultFragment(int requestCode, int resultCode, Intent data) {
+        if (requestCode == REQUEST_AMNEZIA_VPN_PERMISSION && waitingForAmneziaVpnPermission) {
+            waitingForAmneziaVpnPermission = false;
+            if (resultCode == Activity.RESULT_OK) {
+                XrayProxyManager.startService();
+            } else {
+                Toast.makeText(getParentActivity(), "VPN permission is required for AmneziaWG", Toast.LENGTH_LONG).show();
+            }
+            finishFragment();
+            return;
+        }
+        super.onActivityResultFragment(requestCode, resultCode, data);
+    }
+
+    private void applyAmneziaMimic(int preset) {
+        if (amneziaPropertiesField == null) return;
+        String updated = AmneziaWgPresets.apply(amneziaPropertiesField.getText().toString(), preset);
+        amneziaPropertiesField.setText(updated);
+        amneziaPropertiesField.setSelection(amneziaPropertiesField.length());
+        if (currentProxyInfo != null) {
+            currentProxyInfo.wgAmneziaProperties = updated;
+            currentProxyInfo.wgAmneziaCompatibility = true;
+        }
+    }
+
+    private void updateAmneziaEditorVisibility() {
+        if (amneziaPropertiesField != null && currentProxyInfo != null) {
+            amneziaPropertiesField.setVisibility(currentProxyInfo.wgShowAmneziaProperties ? View.VISIBLE : View.GONE);
         }
     }
 

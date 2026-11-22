@@ -25,6 +25,7 @@ public class XrayProxyService extends Service {
         String action = intent != null ? intent.getAction() : null;
         if (ACTION_STOP.equals(action)) {
             XrayProxyManager.stopProcess();
+            AmneziaWgManager.stop();
             XrayProxyManager.setProgressListener(null);
             stopForeground(true);
             stopSelf();
@@ -54,14 +55,29 @@ public class XrayProxyService extends Service {
         });
         new Thread(() -> {
             try {
-                XrayProxyManager.ensureRunning(SharedConfig.currentProxy);
+                SharedConfig.ProxyInfo proxy = SharedConfig.currentProxy;
+                if (proxy != null && proxy.isXrayWireguard()) {
+                    XrayProxyManager.stopProcess();
+                    AetherProxyManager.stopProcess();
+                    AmneziaWgManager.start(getApplicationContext(), proxy);
+                } else {
+                    AmneziaWgManager.stop();
+                    XrayProxyManager.ensureRunning(proxy);
+                }
+            } catch (Exception e) {
+                FileLog.e("Proxy engine start failed", e);
             } finally {
                 XrayProxyManager.setProgressListener(null);
-                if (XrayProxyManager.waitForSocksReady(10_000)) {
+                boolean wireguard = SharedConfig.currentProxy != null && SharedConfig.currentProxy.isXrayWireguard();
+                boolean connected = wireguard
+                        ? AmneziaWgManager.isRunning()
+                        : XrayProxyManager.waitForSocksReady(10_000);
+                if (connected) {
                     XrayProxyManager.markRunning();
                     updateNotificationRunning();
                 } else {
-                    XrayProxyManager.markFailed("socks not ready");
+                    String error = wireguard ? AmneziaWgManager.getLastError() : "socks not ready";
+                    XrayProxyManager.markFailed(error != null ? error : "proxy engine failed");
                     updateNotificationFailed();
                 }
             }
@@ -73,6 +89,7 @@ public class XrayProxyService extends Service {
     public void onDestroy() {
         super.onDestroy();
         XrayProxyManager.stopProcess();
+        AmneziaWgManager.stop();
         XrayProxyManager.setProgressListener(null);
     }
 

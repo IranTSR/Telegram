@@ -40,7 +40,7 @@ tasks.withType<org.jetbrains.kotlin.gradle.tasks.KotlinCompile>().configureEach 
 
 dependencies {
     implementation(gradleApi())
-    implementation("com.android.tools.build:gradle:8.13.2")
+    implementation("com.android.tools.build:gradle:8.13.0")
 
     implementation("com.squareup.moshi:moshi:1.15.0")
     implementation("com.squareup.moshi:moshi-kotlin:1.15.0")

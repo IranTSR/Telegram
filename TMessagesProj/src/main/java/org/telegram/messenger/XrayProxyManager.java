@@ -187,6 +187,10 @@ public class XrayProxyManager {
         if (info == null || !info.isXray()) {
             return;
         }
+        if (info.isXrayWireguard()) {
+            markFailed("WireGuard is handled by the native AmneziaWG engine, not Xray");
+            return;
+        }
         String missing = validateRequiredFields(info);
         if (missing != null) {
             FileLog.e("Xray: " + missing);
@@ -310,7 +314,7 @@ public class XrayProxyManager {
                 String line;
                 while ((line = reader.readLine()) != null) {
                     if (output.length() < 6000) {
-                        output.append(line).append('\\n');
+                        output.append(line).append('\n');
                     }
                 }
             }
@@ -603,8 +607,6 @@ public class XrayProxyManager {
             outbound = buildVmessOutbound(info);
         } else if (info.isXrayTrojan()) {
             outbound = buildTrojanOutbound(info);
-        } else if (info.isXrayWireguard()) {
-            outbound = buildWireguardOutbound(info);
         } else if (info.isXrayHysteria2()) {
             outbound = buildHysteria2Outbound(info);
         } else {
@@ -718,67 +720,6 @@ public class XrayProxyManager {
                 null, null, null);
         outbound.put("streamSettings", stream);
         applyAdvancedJson(outbound, stream, info.vlessAdvancedJson);
-        return outbound;
-    }
-
-    private static JSONObject buildWireguardOutbound(SharedConfig.ProxyInfo info) throws Exception {
-        JSONObject outbound = new JSONObject();
-        outbound.put("tag", "proxy");
-        outbound.put("protocol", "wireguard");
-
-        JSONObject settings = new JSONObject();
-        settings.put("secretKey", info.wgPrivateKey);
-        JSONArray addresses = new JSONArray();
-        for (String address : (TextUtils.isEmpty(info.wgLocalAddress) ? "10.0.0.2/32" : info.wgLocalAddress).split(",")) {
-            if (!TextUtils.isEmpty(address.trim())) {
-                addresses.put(address.trim());
-            }
-        }
-        settings.put("address", addresses);
-        int mtu = 1420;
-        try {
-            mtu = Integer.parseInt(TextUtils.isEmpty(info.wgMtu) ? "1420" : info.wgMtu);
-        } catch (NumberFormatException ignored) {
-        }
-        settings.put("mtu", mtu);
-        // The .conf DNS servers become Xray's remoteDNS: DNS for proxied domain
-        // names is resolved through the tunnel itself.
-        if (!TextUtils.isEmpty(info.wgDns)) {
-            JSONArray dns = new JSONArray();
-            for (String server : info.wgDns.split("[,\\s]+")) {
-                if (!TextUtils.isEmpty(server.trim())) {
-                    dns.put(server.trim());
-                }
-            }
-            if (dns.length() > 0) {
-                settings.put("remoteDNS", dns);
-            }
-        }
-
-        JSONObject peer = new JSONObject();
-        peer.put("publicKey", info.wgPublicKey);
-        String endpoint = TextUtils.isEmpty(info.wgEndpoint)
-                ? info.settings.getAddress() + ":" + info.settings.getPort()
-                : info.wgEndpoint;
-        peer.put("endpoint", endpoint);
-        JSONArray allowedIps = new JSONArray();
-        for (String ip : (TextUtils.isEmpty(info.wgAllowedIps) ? "0.0.0.0/0, ::/0" : info.wgAllowedIps).split(",")) {
-            if (!TextUtils.isEmpty(ip.trim())) {
-                allowedIps.put(ip.trim());
-            }
-        }
-        peer.put("allowedIPs", allowedIps);
-        int keepAlive = 25;
-        try {
-            keepAlive = Integer.parseInt(TextUtils.isEmpty(info.wgKeepAlive) ? "25" : info.wgKeepAlive);
-        } catch (NumberFormatException ignored) {
-        }
-        peer.put("keepAlive", keepAlive);
-        if (!TextUtils.isEmpty(info.wgPresharedKey)) {
-            peer.put("presharedKey", info.wgPresharedKey);
-        }
-        settings.put("peers", new JSONArray().put(peer));
-        outbound.put("settings", settings);
         return outbound;
     }
 
