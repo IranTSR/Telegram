@@ -11,6 +11,7 @@ import java.io.File;
 import java.io.FileOutputStream;
 import java.io.InputStream;
 import java.io.InputStreamReader;
+import java.net.InetAddress;
 import java.net.InetSocketAddress;
 import java.net.Socket;
 import java.nio.charset.StandardCharsets;
@@ -25,6 +26,7 @@ public final class AmneziaWgManager {
     private static final Object LOCK = new Object();
     private static final String LISTEN_ADDRESS = "127.0.0.1";
     private static final int SOCKS_PORT = 1081;
+    private static final int DIAGNOSTICS_PORT = 1082;
     private static final long START_TIMEOUT_MS = 30_000L;
 
     private static Process process;
@@ -168,7 +170,7 @@ public final class AmneziaWgManager {
         JSONObject peer = new JSONObject();
         peer.put("publicKey", info.wgPublicKey.trim());
         peer.put("presharedKey", info.wgPresharedKey == null ? "" : info.wgPresharedKey.trim());
-        peer.put("endpoint", endpoint);
+        peer.put("endpoint", resolveEndpoint(endpoint));
         peer.put("allowedIps", splitValues(TextUtils.isEmpty(info.wgAllowedIps)
                 ? "0.0.0.0/0, ::/0" : info.wgAllowedIps));
         peer.put("keepalive", parseInt(info.wgKeepAlive, 25));
@@ -202,6 +204,78 @@ public final class AmneziaWgManager {
         }
         root.put("amnezia", amnezia);
         return root;
+    }
+
+    private static String resolveEndpoint(String endpoint) throws Exception {
+        String value = endpoint.trim();
+        String host;
+        String port;
+        if (value.startsWith("[")) {
+            int close = value.indexOf(']');
+            if (close < 0 || close + 1 >= value.length() || value.charAt(close + 1) != ':') {
+                throw new IllegalArgumentException("Invalid AmneziaWG endpoint format");
+            }
+            host = value.substring(1, close);
+            port = value.substring(close + 2);
+        } else {
+            int separator = value.lastIndexOf(':');
+            if (separator <= 0 || separator == value.length() - 1) {
+                throw new IllegalArgumentException("Invalid AmneziaWG endpoint format");
+            }
+            host = value.substring(0, separator);
+            port = value.substring(separator + 1);
+        }
+        int portNumber;
+        try { portNumber = Integer.parseInt(port); }
+        catch (NumberFormatException e) { throw new IllegalArgumentException("Invalid AmneziaWG endpoint port"); }
+        if (portNumber < 1 || portNumber > 65535) throw new IllegalArgumentException("Invalid AmneziaWG endpoint port");
+        InetAddress[] addresses = InetAddress.getAllByName(host);
+        if (addresses.length == 0) throw new IllegalStateException("Could not resolve AmneziaWG endpoint");
+        InetAddress selected = addresses[0];
+        for (InetAddress address : addresses) {
+            if (address instanceof java.net.Inet4Address) { selected = address; break; }
+        }
+        String ip = selected.getHostAddress();
+        return selected instanceof java.net.Inet6Address ? "[" + ip + "]:" + portNumber : ip + ":" + portNumber;
+    }
+
+    public static String getDiagnostics() {
+        synchronized (LOCK) {
+            if (process == null || !isProcessAlive(process)) {
+                return "Engine: stopped\\n" + (lastError == null ? "No active AmneziaWG process." : "Last error: " + lastError);
+            }
+        }
+        try (Socket socket = new Socket()) {
+            socket.connect(new InetSocketAddress(LISTEN_ADDRESS, DIAGNOSTICS_PORT), 700);
+            socket.setSoTimeout(1200);
+            BufferedReader reader = new BufferedReader(new InputStreamReader(socket.getInputStream(), StandardCharsets.UTF_8));
+            String line = reader.readLine();
+            if (line == null) return "Diagnostics: no response";
+            JSONObject status = new JSONObject(line);
+            StringBuilder result = new StringBuilder();
+            result.append("Engine: ").append(status.optBoolean("running") ? "running" : "stopped");
+            result.append("\\nSOCKS5: ").append(status.optBoolean("socksReady") ? "ready" : "not ready");
+            if (status.optBoolean("handshake")) result.append("\\nHandshake: received ").append(status.optLong("handshakeAgeSeconds")).append("s ago");
+            else result.append("\\nHandshake: not received yet");
+            result.append("\\nReceived: ").append(status.optLong("rxBytes")).append(" bytes");
+            result.append("\\nSent: ").append(status.optLong("txBytes")).append(" bytes");
+            result.append("\\nUptime: ").append(status.optLong("uptimeSeconds")).append("s");
+            String error = status.optString("lastError", "");
+            if (!TextUtils.isEmpty(error)) result.append("\\nLast error: ").append(error);
+            return result.toString();
+        } catch (Exception e) {
+            return "Engine: running\\nDiagnostics unavailable: " + e.getClass().getSimpleName() + ": " + e.getMessage();
+        }
+    }
+
+    public static String getDiagnosticsSummary() {
+        String details = getDiagnostics();
+        if (details.contains("Handshake: received")) return "Handshake received";
+        if (details.contains("Handshake: not received")) return "Waiting for handshake";
+        if (details.contains("Diagnostics unavailable")) return "Diagnostics unavailable";
+        if (details.contains("Last error:")) return "Connection error";
+        if (details.contains("Engine: stopped")) return "Engine stopped";
+        return "Checking connection";
     }
 
     private static String normalizeAmneziaKey(String value) {

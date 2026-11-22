@@ -196,6 +196,7 @@ public class ProxySettingsActivity extends BaseFragment {
     private TextSettingsCell redownloadCell;
     private TextSettingsCell xrayStatusCell;
     private TextSettingsCell aetherStatusCell;
+    private TextSettingsCell amneziaDiagnosticsCell;
     private ActionBarMenuItem doneItem;
     private boolean xrayStatusUpdates;
     private final Runnable xrayStatusUpdater = new Runnable() {
@@ -206,7 +207,8 @@ public class ProxySettingsActivity extends BaseFragment {
             }
             updateXrayStatusCell();
             updateAetherStatusCell();
-            AndroidUtilities.runOnUIThread(this, 500);
+            updateAmneziaDiagnosticsCell();
+            AndroidUtilities.runOnUIThread(this, 1000);
         }
     };
     private RadioCell[] typeCell = new RadioCell[10];
@@ -1232,6 +1234,17 @@ public class ProxySettingsActivity extends BaseFragment {
         aetherStatusCell.setEnabled(false);
         linearLayout2.addView(aetherStatusCell, LayoutHelper.createLinear(LayoutHelper.MATCH_PARENT, LayoutHelper.WRAP_CONTENT));
 
+        amneziaDiagnosticsCell = new TextSettingsCell(context);
+        amneziaDiagnosticsCell.setBackgroundDrawable(Theme.getSelectorDrawable(true));
+        amneziaDiagnosticsCell.setTextColor(Theme.getColor(Theme.key_windowBackgroundWhiteBlackText));
+        amneziaDiagnosticsCell.setVisibility(View.GONE);
+        amneziaDiagnosticsCell.setOnClickListener(v -> {
+            String diagnostics = org.telegram.messenger.AmneziaWgManager.getDiagnostics();
+            clipboardManager.setPrimaryClip(ClipData.newPlainText("AmneziaWG diagnostics", diagnostics));
+            if (getParentActivity() != null) Toast.makeText(getParentActivity(), "AmneziaWG diagnostics copied", Toast.LENGTH_SHORT).show();
+        });
+        linearLayout2.addView(amneziaDiagnosticsCell, LayoutHelper.createLinear(LayoutHelper.MATCH_PARENT, LayoutHelper.WRAP_CONTENT));
+
         sectionCell[1] = new ShadowSectionCell(context);
         linearLayout2.addView(sectionCell[1], LayoutHelper.createLinear(LayoutHelper.MATCH_PARENT, LayoutHelper.WRAP_CONTENT));
 
@@ -1638,6 +1651,12 @@ public class ProxySettingsActivity extends BaseFragment {
         aetherStatusCell.setTextAndValue(title, value, false);
     }
 
+    private void updateAmneziaDiagnosticsCell() {
+        if (amneziaDiagnosticsCell == null || currentType != ProxySettings.Type.XRAY_WIREGUARD) return;
+        amneziaDiagnosticsCell.setTextAndValue("AmneziaWG Diagnostics",
+                org.telegram.messenger.AmneziaWgManager.getDiagnosticsSummary(), false);
+    }
+
     private String aetherFieldLabel(String value, String[] labels, String[] values) {
         for (int i = 0; i < values.length; i++) {
             if (values[i].equals(value)) {
@@ -1785,6 +1804,10 @@ public class ProxySettingsActivity extends BaseFragment {
             boolean isWireGuard = currentType == ProxySettings.Type.XRAY_WIREGUARD;
             if (amneziaOptionsContainer != null) {
                 amneziaOptionsContainer.setVisibility(isWireGuard ? View.VISIBLE : View.GONE);
+            }
+            if (amneziaDiagnosticsCell != null) {
+                amneziaDiagnosticsCell.setVisibility(isWireGuard ? View.VISIBLE : View.GONE);
+                updateAmneziaDiagnosticsCell();
             }
             // Aether needs no server address/port: the engine dials Cloudflare itself.
             ((View) inputFields[FIELD_IP].getParent()).setVisibility(isAether ? View.GONE : View.VISIBLE);

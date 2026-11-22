@@ -16,6 +16,7 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/amnezia-vpn/amneziawg-go/v3/conn"
@@ -44,6 +45,95 @@ func (d *userspaceDialer) DialStream(ctx context.Context, address string) (net.C
 }
 
 var activeDevice *device.Device
+
+const diagnosticsAddress = "127.0.0.1:1082"
+
+var (
+	diagnosticsMu sync.RWMutex
+	lastRuntimeError string
+	engineStartedAt time.Time
+)
+
+type diagnosticSnapshot struct {
+	Running          bool   `json:"running"`
+	SocksReady       bool   `json:"socksReady"`
+	Handshake        bool   `json:"handshake"`
+	HandshakeAgeSecs int64  `json:"handshakeAgeSeconds"`
+	RxBytes          int64  `json:"rxBytes"`
+	TxBytes          int64  `json:"txBytes"`
+	UptimeSeconds    int64  `json:"uptimeSeconds"`
+	LastError        string `json:"lastError"`
+}
+
+func setRuntimeError(err error) {
+	diagnosticsMu.Lock()
+	defer diagnosticsMu.Unlock()
+	if err == nil {
+		lastRuntimeError = ""
+	} else {
+		lastRuntimeError = err.Error()
+	}
+}
+
+func currentDiagnostics() diagnosticSnapshot {
+	snapshot := diagnosticSnapshot{Running: activeDevice != nil, SocksReady: true}
+	if !engineStartedAt.IsZero() {
+		snapshot.UptimeSeconds = int64(time.Since(engineStartedAt).Seconds())
+	}
+	diagnosticsMu.RLock()
+	snapshot.LastError = lastRuntimeError
+	diagnosticsMu.RUnlock()
+	if activeDevice == nil {
+		snapshot.SocksReady = false
+		return snapshot
+	}
+	var output strings.Builder
+	if err := activeDevice.IpcGetOperation(&output); err != nil {
+		snapshot.LastError = "Could not read WireGuard engine status: " + err.Error()
+		return snapshot
+	}
+	var handshakeSec int64
+	for _, line := range strings.Split(output.String(), "\n") {
+		key, value, ok := strings.Cut(line, "=")
+		if !ok { continue }
+		switch key {
+		case "last_handshake_time_sec":
+			handshakeSec, _ = strconv.ParseInt(value, 10, 64)
+		case "rx_bytes":
+			snapshot.RxBytes, _ = strconv.ParseInt(value, 10, 64)
+		case "tx_bytes":
+			snapshot.TxBytes, _ = strconv.ParseInt(value, 10, 64)
+		}
+	}
+	if handshakeSec > 0 {
+		snapshot.Handshake = true
+		snapshot.HandshakeAgeSecs = time.Now().Unix() - handshakeSec
+		if snapshot.HandshakeAgeSecs < 0 { snapshot.HandshakeAgeSecs = 0 }
+	}
+	return snapshot
+}
+
+func serveDiagnostics(address string) {
+	listener, err := net.Listen("tcp", address)
+	if err != nil {
+		setRuntimeError(fmt.Errorf("diagnostics listener: %w", err))
+		log.Printf("diagnostics listener failed: %v", err)
+		return
+	}
+	log.Printf("DIAGNOSTICS %s", listener.Addr())
+	for {
+		client, err := listener.Accept()
+		if err != nil {
+			log.Printf("diagnostics accept failed: %v", err)
+			continue
+		}
+		go func(c net.Conn) {
+			defer c.Close()
+			_ = c.SetWriteDeadline(time.Now().Add(2 * time.Second))
+			_ = json.NewEncoder(c).Encode(currentDiagnostics())
+		}(client)
+	}
+}
 
 type profile struct {
 	PrivateKey string            `json:"privateKey"`
@@ -77,6 +167,7 @@ func main() {
 	}
 	activeDevice = device.NewDevice(tunDevice, conn.NewDefaultBind(),
 		device.NewLogger(device.LogLevelError, "(telegram-awg) "))
+	engineStartedAt = time.Now()
 	if err := activeDevice.IpcSet(ipc); err != nil {
 		log.Fatalf("configure AmneziaWG device: %v", err)
 	}
@@ -84,6 +175,7 @@ func main() {
 		log.Fatalf("start AmneziaWG device: %v", err)
 	}
 	dialer := &userspaceDialer{network: network}
+	go serveDiagnostics(diagnosticsAddress)
 
 	listener, err := net.Listen("tcp", *listenAddress)
 	if err != nil {
@@ -287,10 +379,12 @@ func handleSocks(client net.Conn, dialer streamDialer) {
 	upstream, err := dialer.DialStream(ctx, net.JoinHostPort(host, strconv.Itoa(int(port))))
 	if err != nil {
 		log.Printf("SOCKS connect %s:%d failed: %v", host, port, err)
+		setRuntimeError(err)
 		writeSocksReply(client, 5)
 		return
 	}
 	defer upstream.Close()
+	setRuntimeError(nil)
 	if err := writeSocksReply(client, 0); err != nil {
 		return
 	}

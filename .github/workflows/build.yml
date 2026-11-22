@@ -25,8 +25,8 @@ permissions:
   contents: write
 
 env:
-  APP_VERSION_NAME: "13.1.2"
-  RELEASE_TAG: "v13.1.2-awg-userspace1"
+  APP_VERSION_NAME: "13.1.3"
+  RELEASE_TAG: "v13.1.3-awg-userspace2"
 
 jobs:
   build:
@@ -160,7 +160,7 @@ jobs:
           name: Telegram Proxy ${{ env.APP_VERSION_NAME }} — AmneziaWG Userspace
           files: dist/*.apk
           body: |
-            Telegram ${{ env.APP_VERSION_NAME }} with built-in XRay (VLESS, Shadowsocks, VMess, Trojan, Hysteria2), Aether (WARP), and an AmneziaWG userspace SOCKS5 engine.
+            Telegram ${{ env.APP_VERSION_NAME }} with built-in XRay (VLESS, Shadowsocks, VMess, Trojan, Hysteria2), Aether (WARP), and an AmneziaWG userspace SOCKS5 engine with endpoint resolution and in-app diagnostics.
             AmneziaWG uses the gVisor userspace network stack and Telegram's native proxy API; it does not start Android VpnService or display the system VPN indicator.
             XRay core v26.7.28 and Aether core v2.4.0 bundled for all architectures.
 
