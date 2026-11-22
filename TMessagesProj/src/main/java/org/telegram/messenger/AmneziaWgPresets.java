@@ -69,7 +69,7 @@ public final class AmneziaWgPresets {
         StringBuilder out = new StringBuilder();
         for (String key : order) {
             String value = values.get(key);
-            if (value != null && !value.isEmpty()) out.append(key).append(" = ").append(value).append('\\n');
+            if (value != null && !value.isEmpty()) out.append(key).append(" = ").append(value).append('\n');
         }
         return out.toString();
     }
