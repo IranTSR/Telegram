@@ -1,4 +1,11 @@
 include ':TMessagesProj'
+
+// Build the upstream AmneziaWG Android tunnel library as an isolated composite build.
+includeBuild('TMessagesProj/awg') {
+    dependencySubstitution {
+        substitute(module('org.amnezia.awg:tunnel:3.1.4')).using(project(':tunnel'))
+    }
+}
 include ':TMessagesProj_App'
 include ':TMessagesProj_AppHuawei'
 include ':TMessagesProj_AppHockeyApp'

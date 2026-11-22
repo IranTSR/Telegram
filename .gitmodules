@@ -55,3 +55,7 @@
 [submodule "TMessagesProj/jni/third_party/libprisma"]
 	path = TMessagesProj/jni/third_party/libprisma
 	url = https://github.com/TelegramMessenger/libprisma.git
+
+[submodule "TMessagesProj/awg"]
+	path = TMessagesProj/awg
+	url = https://github.com/amnezia-vpn/amneziawg-android.git
