@@ -20,7 +20,7 @@ permissions:
 
 env:
   APP_VERSION_NAME: "13.1.1"
-  RELEASE_TAG: "v13.1.1-xray2"
+  RELEASE_TAG: "v13.1.1-amneziawg1"
 
 jobs:
   build:
@@ -113,14 +113,14 @@ jobs:
           path: dist/*.apk
 
       - name: Publish GitHub Release
-        if: inputs.publish_release
+        if: (github.event_name == 'push' && github.ref == 'refs/heads/feature/amneziawg-native-engine') || (github.event_name == 'workflow_dispatch' && inputs.publish_release)
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ env.RELEASE_TAG }}
           name: Telegram XRay ${{ env.APP_VERSION_NAME }}
           files: dist/*.apk
           body: |
-            Telegram ${{ env.APP_VERSION_NAME }} with built-in XRay (VLESS, Shadowsocks, VMess, Trojan, WireGuard, Hysteria2) and Aether (WARP) proxy support.
+            Telegram ${{ env.APP_VERSION_NAME }} with built-in XRay (VLESS, Shadowsocks, VMess, Trojan, Hysteria2), Aether (WARP), and native AmneziaWG engine support.
             XRay core v26.7.28 and Aether core v2.4.0 bundled for all architectures.
 
             - **universal**: all ABIs (armeabi-v7a, arm64-v8a, x86, x86_64)
