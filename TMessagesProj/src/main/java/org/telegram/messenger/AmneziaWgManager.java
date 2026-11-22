@@ -141,7 +141,7 @@ public final class AmneziaWgManager {
         File file = configFile;
         configFile = null;
         if (file != null && file.exists() && !file.delete()) {
-            FileLog.w("AmneziaWG: could not delete temporary profile file");
+            FileLog.d("AmneziaWG: could not delete temporary profile file");
         }
     }
 
@@ -249,7 +249,7 @@ public final class AmneziaWgManager {
 
     private static void require(String value, String label) {
         if (TextUtils.isEmpty(value) || value.trim().isEmpty()
-                || value.indexOf('\\n') >= 0 || value.indexOf('\\r') >= 0) {
+                || value.indexOf('\n') >= 0 || value.indexOf('\r') >= 0) {
             throw new IllegalArgumentException("Missing or invalid " + label);
         }
     }
