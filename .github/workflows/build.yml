@@ -1,3 +1,4 @@
+# Release build includes the non-blocking AmneziaWG diagnostics poller.
 name: Build Telegram Proxy
 
 on:
