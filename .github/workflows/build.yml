@@ -1,15 +1,15 @@
-name: Build Telegram XRay
+name: Build Telegram Proxy
 
 on:
   push:
     branches:
       - fix/xray-protocols-connection
-      - feature/amneziawg-userspace-proxy
       - feature/amneziawg-native-engine
       - feature/amneziawg-userspace-proxy
   pull_request:
     branches:
       - fix/xray-protocols-connection
+      - feature/amneziawg-userspace-proxy
   workflow_dispatch:
     inputs:
       publish_release:
@@ -135,16 +135,16 @@ jobs:
           OUT=TMessagesProj_AppStandalone/build/outputs/apk
           mkdir -p dist
           mv "$OUT/afat/standalone/app.apk"  "dist/Telegram-Proxy-${{ env.APP_VERSION_NAME }}-universal.apk"
-          mv "$OUT/a64/standalone/app.apk"   "dist/Telegram-XRay-${{ env.APP_VERSION_NAME }}-arm64.apk"
-          mv "$OUT/a32/standalone/app.apk"   "dist/Telegram-XRay-${{ env.APP_VERSION_NAME }}-arm32.apk"
-          mv "$OUT/x64/standalone/app.apk"   "dist/Telegram-XRay-${{ env.APP_VERSION_NAME }}-x86_64.apk"
-          mv "$OUT/x86/standalone/app.apk"   "dist/Telegram-XRay-${{ env.APP_VERSION_NAME }}-x86.apk"
+          mv "$OUT/a64/standalone/app.apk"   "dist/Telegram-Proxy-${{ env.APP_VERSION_NAME }}-arm64.apk"
+          mv "$OUT/a32/standalone/app.apk"   "dist/Telegram-Proxy-${{ env.APP_VERSION_NAME }}-arm32.apk"
+          mv "$OUT/x64/standalone/app.apk"   "dist/Telegram-Proxy-${{ env.APP_VERSION_NAME }}-x86_64.apk"
+          mv "$OUT/x86/standalone/app.apk"   "dist/Telegram-Proxy-${{ env.APP_VERSION_NAME }}-x86.apk"
           ls -la dist
 
       - name: Upload APKs
         uses: actions/upload-artifact@v4
         with:
-          name: Telegram-XRay-${{ env.APP_VERSION_NAME }}
+          name: Telegram-Proxy-${{ env.APP_VERSION_NAME }}
           path: dist/*.apk
 
       - name: Publish GitHub Release
