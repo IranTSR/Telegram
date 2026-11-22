@@ -5,6 +5,9 @@ on:
     branches:
       - fix/xray-protocols-connection
       - feature/amneziawg-native-engine
+  pull_request:
+    branches:
+      - fix/xray-protocols-connection
   workflow_dispatch:
     inputs:
       publish_release:
