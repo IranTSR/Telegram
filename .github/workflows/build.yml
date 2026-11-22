@@ -15,14 +15,14 @@ on:
       publish_release:
         description: "Create a GitHub Release with the 5 APKs"
         type: boolean
-        default: true
+        default: false
 
 permissions:
   contents: write
 
 env:
-  APP_VERSION_NAME: "13.1.1"
-  RELEASE_TAG: "v13.1.1-amneziawg1"
+  APP_VERSION_NAME: "13.1.2"
+  RELEASE_TAG: "v13.1.2-awg-userspace1"
 
 jobs:
   build:
@@ -132,7 +132,7 @@ jobs:
         run: |
           OUT=TMessagesProj_AppStandalone/build/outputs/apk
           mkdir -p dist
-          mv "$OUT/afat/standalone/app.apk"  "dist/Telegram-XRay-${{ env.APP_VERSION_NAME }}-universal.apk"
+          mv "$OUT/afat/standalone/app.apk"  "dist/Telegram-Proxy-${{ env.APP_VERSION_NAME }}-universal.apk"
           mv "$OUT/a64/standalone/app.apk"   "dist/Telegram-XRay-${{ env.APP_VERSION_NAME }}-arm64.apk"
           mv "$OUT/a32/standalone/app.apk"   "dist/Telegram-XRay-${{ env.APP_VERSION_NAME }}-arm32.apk"
           mv "$OUT/x64/standalone/app.apk"   "dist/Telegram-XRay-${{ env.APP_VERSION_NAME }}-x86_64.apk"
@@ -146,11 +146,11 @@ jobs:
           path: dist/*.apk
 
       - name: Publish GitHub Release
-        if: (github.event_name == 'push' && github.ref == 'refs/heads/feature/amneziawg-native-engine') || (github.event_name == 'workflow_dispatch' && inputs.publish_release)
+        if: github.event_name == 'workflow_dispatch' && inputs.publish_release
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ env.RELEASE_TAG }}
-          name: Telegram XRay ${{ env.APP_VERSION_NAME }}
+          name: Telegram Proxy ${{ env.APP_VERSION_NAME }} — AmneziaWG Userspace
           files: dist/*.apk
           body: |
             Telegram ${{ env.APP_VERSION_NAME }} with built-in XRay (VLESS, Shadowsocks, VMess, Trojan, Hysteria2), Aether (WARP), and native AmneziaWG engine support.
