@@ -57,7 +57,6 @@ import org.telegram.messenger.SharedConfig;
 import org.telegram.messenger.XrayProxyManager;
 import org.telegram.messenger.AetherProxyManager;
 import org.telegram.messenger.AmneziaWgPresets;
-import org.telegram.messenger.AmneziaWgManager;
 import org.telegram.messenger.SvgHelper;
 import org.telegram.messenger.Utilities;
 import org.telegram.utils.proxy.WebProxyTransport;
@@ -188,8 +187,6 @@ public class ProxySettingsActivity extends BaseFragment {
     private LinearLayout amneziaOptionsContainer;
     private TextSettingsCell showAmneziaPropertiesCell;
     private TextSettingsCell amneziaCompatibilityCell;
-    private boolean waitingForAmneziaVpnPermission;
-    private static final int REQUEST_AMNEZIA_VPN_PERMISSION = 9147;
     private EditTextBoldCursor amneziaPropertiesField;
     private HeaderCell headerCell;
     private ShadowSectionCell[] sectionCell = new ShadowSectionCell[3];
@@ -199,6 +196,7 @@ public class ProxySettingsActivity extends BaseFragment {
     private TextSettingsCell redownloadCell;
     private TextSettingsCell xrayStatusCell;
     private TextSettingsCell aetherStatusCell;
+    private TextSettingsCell amneziaDiagnosticsCell;
     private ActionBarMenuItem doneItem;
     private boolean xrayStatusUpdates;
     private final Runnable xrayStatusUpdater = new Runnable() {
@@ -209,7 +207,8 @@ public class ProxySettingsActivity extends BaseFragment {
             }
             updateXrayStatusCell();
             updateAetherStatusCell();
-            AndroidUtilities.runOnUIThread(this, 500);
+            updateAmneziaDiagnosticsCell();
+            AndroidUtilities.runOnUIThread(this, 1000);
         }
     };
     private RadioCell[] typeCell = new RadioCell[10];
@@ -457,12 +456,8 @@ public class ProxySettingsActivity extends BaseFragment {
                             && currentType == ProxySettings.Type.XRAY_WIREGUARD
                             && (addingNewProxy || SharedConfig.currentProxy == currentProxyInfo);
                     if (shouldStartAmnezia) {
-                        Intent vpnPermission = AmneziaWgManager.prepareVpnPermission(getParentActivity());
-                        if (vpnPermission != null) {
-                            waitingForAmneziaVpnPermission = true;
-                            startActivityForResult(vpnPermission, REQUEST_AMNEZIA_VPN_PERMISSION);
-                            return;
-                        }
+                        // AmneziaWG now runs as an in-process userspace SOCKS5 proxy;
+                        // it does not request Android VPN consent or create a system VPN.
                         XrayProxyManager.startService();
                     }
                     finishFragment();
@@ -1239,6 +1234,27 @@ public class ProxySettingsActivity extends BaseFragment {
         aetherStatusCell.setEnabled(false);
         linearLayout2.addView(aetherStatusCell, LayoutHelper.createLinear(LayoutHelper.MATCH_PARENT, LayoutHelper.WRAP_CONTENT));
 
+        amneziaDiagnosticsCell = new TextSettingsCell(context);
+        amneziaDiagnosticsCell.setBackgroundDrawable(Theme.getSelectorDrawable(true));
+        amneziaDiagnosticsCell.setTextColor(Theme.getColor(Theme.key_windowBackgroundWhiteBlackText));
+        amneziaDiagnosticsCell.setVisibility(View.GONE);
+        amneziaDiagnosticsCell.setOnClickListener(v -> {
+            amneziaDiagnosticsCell.setEnabled(false);
+            new Thread(() -> {
+                String diagnostics = org.telegram.messenger.AmneziaWgManager.getDiagnostics();
+                AndroidUtilities.runOnUIThread(() -> {
+                    if (amneziaDiagnosticsCell != null) {
+                        amneziaDiagnosticsCell.setEnabled(true);
+                    }
+                    if (getParentActivity() != null) {
+                        clipboardManager.setPrimaryClip(ClipData.newPlainText("AmneziaWG diagnostics", diagnostics));
+                        Toast.makeText(getParentActivity(), "AmneziaWG diagnostics copied", Toast.LENGTH_SHORT).show();
+                    }
+                });
+            }, "AmneziaWG-Diagnostics-UI").start();
+        });
+        linearLayout2.addView(amneziaDiagnosticsCell, LayoutHelper.createLinear(LayoutHelper.MATCH_PARENT, LayoutHelper.WRAP_CONTENT));
+
         sectionCell[1] = new ShadowSectionCell(context);
         linearLayout2.addView(sectionCell[1], LayoutHelper.createLinear(LayoutHelper.MATCH_PARENT, LayoutHelper.WRAP_CONTENT));
 
@@ -1645,6 +1661,12 @@ public class ProxySettingsActivity extends BaseFragment {
         aetherStatusCell.setTextAndValue(title, value, false);
     }
 
+    private void updateAmneziaDiagnosticsCell() {
+        if (amneziaDiagnosticsCell == null || currentType != ProxySettings.Type.XRAY_WIREGUARD) return;
+        amneziaDiagnosticsCell.setTextAndValue("AmneziaWG Diagnostics",
+                org.telegram.messenger.AmneziaWgManager.getDiagnosticsSummary(), false);
+    }
+
     private String aetherFieldLabel(String value, String[] labels, String[] values) {
         for (int i = 0; i < values.length; i++) {
             if (values[i].equals(value)) {
@@ -1793,6 +1815,10 @@ public class ProxySettingsActivity extends BaseFragment {
             if (amneziaOptionsContainer != null) {
                 amneziaOptionsContainer.setVisibility(isWireGuard ? View.VISIBLE : View.GONE);
             }
+            if (amneziaDiagnosticsCell != null) {
+                amneziaDiagnosticsCell.setVisibility(isWireGuard ? View.VISIBLE : View.GONE);
+                updateAmneziaDiagnosticsCell();
+            }
             // Aether needs no server address/port: the engine dials Cloudflare itself.
             ((View) inputFields[FIELD_IP].getParent()).setVisibility(isAether ? View.GONE : View.VISIBLE);
             if (currentType == ProxySettings.Type.SOCKS5) {
@@ -1904,21 +1930,6 @@ public class ProxySettingsActivity extends BaseFragment {
             }
             checkShareDone(animated);
         }
-    }
-
-    @Override
-    public void onActivityResultFragment(int requestCode, int resultCode, Intent data) {
-        if (requestCode == REQUEST_AMNEZIA_VPN_PERMISSION && waitingForAmneziaVpnPermission) {
-            waitingForAmneziaVpnPermission = false;
-            if (resultCode == Activity.RESULT_OK) {
-                XrayProxyManager.startService();
-            } else {
-                Toast.makeText(getParentActivity(), "VPN permission is required for AmneziaWG", Toast.LENGTH_LONG).show();
-            }
-            finishFragment();
-            return;
-        }
-        super.onActivityResultFragment(requestCode, resultCode, data);
     }
 
     private void applyAmneziaMimic(int preset) {

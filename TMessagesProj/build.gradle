@@ -44,9 +44,6 @@ configurations.all {
 }
 
 dependencies {
-    // Official AmneziaWG Android tunnel engine (isolated composite build).
-    implementation 'org.amnezia.awg:tunnel:3.1.4'
-
     implementation 'androidx.core:core:1.16.0'
     implementation 'androidx.palette:palette:1.0.0'
     implementation 'androidx.exifinterface:exifinterface:1.3.6'
@@ -311,7 +308,7 @@ android {
     buildToolsVersion '36.0.0'
     ndkVersion "27.2.12479018"
 
-    sourceSets.main.jniLibs.srcDirs = ['./jni/', xrayJniDir, aetherJniDir]
+    sourceSets.main.jniLibs.srcDirs = ['./jni/', 'src/main/jniLibs', xrayJniDir, aetherJniDir]
     sourceSets.main.assets.srcDirs += [xrayAssetsDir]
 
     externalNativeBuild {
