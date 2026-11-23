@@ -26,8 +26,8 @@ permissions:
   contents: write
 
 env:
-  APP_VERSION_NAME: "13.1.3"
-  RELEASE_TAG: "v13.1.3-awg-userspace2"
+  APP_VERSION_NAME: "13.1.4"
+  RELEASE_TAG: "v13.1.4-awg-userspace3"
 
 jobs:
   build:
