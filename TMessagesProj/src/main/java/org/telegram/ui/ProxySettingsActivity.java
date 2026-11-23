@@ -1239,9 +1239,19 @@ public class ProxySettingsActivity extends BaseFragment {
         amneziaDiagnosticsCell.setTextColor(Theme.getColor(Theme.key_windowBackgroundWhiteBlackText));
         amneziaDiagnosticsCell.setVisibility(View.GONE);
         amneziaDiagnosticsCell.setOnClickListener(v -> {
-            String diagnostics = org.telegram.messenger.AmneziaWgManager.getDiagnostics();
-            clipboardManager.setPrimaryClip(ClipData.newPlainText("AmneziaWG diagnostics", diagnostics));
-            if (getParentActivity() != null) Toast.makeText(getParentActivity(), "AmneziaWG diagnostics copied", Toast.LENGTH_SHORT).show();
+            amneziaDiagnosticsCell.setEnabled(false);
+            new Thread(() -> {
+                String diagnostics = org.telegram.messenger.AmneziaWgManager.getDiagnostics();
+                AndroidUtilities.runOnUIThread(() -> {
+                    if (amneziaDiagnosticsCell != null) {
+                        amneziaDiagnosticsCell.setEnabled(true);
+                    }
+                    if (getParentActivity() != null) {
+                        clipboardManager.setPrimaryClip(ClipData.newPlainText("AmneziaWG diagnostics", diagnostics));
+                        Toast.makeText(getParentActivity(), "AmneziaWG diagnostics copied", Toast.LENGTH_SHORT).show();
+                    }
+                });
+            }, "AmneziaWG-Diagnostics-UI").start();
         });
         linearLayout2.addView(amneziaDiagnosticsCell, LayoutHelper.createLinear(LayoutHelper.MATCH_PARENT, LayoutHelper.WRAP_CONTENT));
 
